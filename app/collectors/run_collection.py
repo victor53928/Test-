@@ -1,4 +1,4 @@
-"""Phase 1 entrypoint: populate the local DB with KR stock market data and financials.
+"""Entrypoint: populate the local DB with KR + US stock market data and financials.
 
 Usage:
     python -m app.collectors.run_collection
@@ -7,15 +7,15 @@ Usage:
 import datetime
 import time
 
-from app.collectors import dart_collector, krx_collector
+from app.collectors import dart_collector, krx_collector, us_collector
 from app.config import DART_API_KEY
 from app.db import get_conn, init_db, upsert_financials, upsert_market_data, upsert_stock
-from app.sectors import all_kr_tickers
+from app.sectors import all_kr_tickers, all_us_tickers
 
 MARKET_DATA_LOOKBACK_DAYS = 90
 
 
-def collect_market_data():
+def collect_kr_market_data():
     today = datetime.date.today()
     fromdate = (today - datetime.timedelta(days=MARKET_DATA_LOOKBACK_DAYS)).strftime("%Y%m%d")
     todate = today.strftime("%Y%m%d")
@@ -26,17 +26,17 @@ def collect_market_data():
             try:
                 rows = krx_collector.fetch_market_data(ticker, fromdate, todate)
             except Exception as e:
-                print(f"[market_data] {ticker} {name}: failed ({e})")
+                print(f"[kr market_data] {ticker} {name}: failed ({e})")
                 continue
             for date, close, market_cap, volume in rows:
                 upsert_market_data(conn, ticker, date, close, market_cap, volume)
-            print(f"[market_data] {ticker} {name}: {len(rows)} rows")
+            print(f"[kr market_data] {ticker} {name}: {len(rows)} rows")
             time.sleep(0.2)  # be polite to KRX
 
 
-def collect_financials():
+def collect_kr_financials():
     if not DART_API_KEY:
-        print("[financials] DART_API_KEY not set in .env, skipping.")
+        print("[kr financials] DART_API_KEY not set in .env, skipping.")
         return
 
     corp_map = dart_collector.get_corp_code_map()
@@ -46,18 +46,47 @@ def collect_financials():
         for ticker, name, sector_key in all_kr_tickers():
             corp_code = corp_map.get(ticker)
             if not corp_code:
-                print(f"[financials] {ticker} {name}: no DART corp_code found")
+                print(f"[kr financials] {ticker} {name}: no DART corp_code found")
                 continue
             for year in (current_year - 1, current_year):
                 for quarter in (1, 2, 3, 4):
                     revenue, operating_income = dart_collector.fetch_financials(corp_code, year, quarter)
                     if revenue is not None or operating_income is not None:
                         upsert_financials(conn, ticker, year, quarter, revenue, operating_income)
-                        print(f"[financials] {ticker} {name} {year}Q{quarter}: revenue={revenue}, op_income={operating_income}")
+                        print(f"[kr financials] {ticker} {name} {year}Q{quarter}: revenue={revenue}, op_income={operating_income}")
                     time.sleep(0.2)
+
+
+def collect_us_market_data():
+    with get_conn() as conn:
+        for ticker, name, sector_key in all_us_tickers():
+            upsert_stock(conn, ticker, name, sector_key, "US")
+            try:
+                rows = us_collector.fetch_market_data(ticker, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
+            except Exception as e:
+                print(f"[us market_data] {ticker} {name}: failed ({e})")
+                continue
+            for date, close, market_cap, volume in rows:
+                upsert_market_data(conn, ticker, date, close, market_cap, volume)
+            print(f"[us market_data] {ticker} {name}: {len(rows)} rows")
+
+
+def collect_us_financials():
+    with get_conn() as conn:
+        for ticker, name, sector_key in all_us_tickers():
+            try:
+                results = us_collector.fetch_financials(ticker)
+            except Exception as e:
+                print(f"[us financials] {ticker} {name}: failed ({e})")
+                continue
+            for year, quarter, revenue, operating_income in results:
+                upsert_financials(conn, ticker, year, quarter, revenue, operating_income)
+            print(f"[us financials] {ticker} {name}: {len(results)} quarters")
 
 
 if __name__ == "__main__":
     init_db()
-    collect_market_data()
-    collect_financials()
+    collect_kr_market_data()
+    collect_kr_financials()
+    collect_us_market_data()
+    collect_us_financials()
