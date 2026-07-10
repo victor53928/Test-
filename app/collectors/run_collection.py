@@ -7,10 +7,10 @@ Usage:
 import datetime
 import time
 
-from app.collectors import dart_collector, krx_collector, us_collector
+from app.collectors import dart_collector, krx_collector, price_collector, us_collector
 from app.config import DART_API_KEY
-from app.db import get_conn, init_db, upsert_financials, upsert_market_data, upsert_stock
-from app.sectors import all_kr_tickers, all_us_tickers
+from app.db import get_conn, init_db, upsert_financials, upsert_market_data, upsert_price, upsert_stock
+from app.sectors import BONDS, COMMODITIES, all_kr_tickers, all_us_tickers
 
 MARKET_DATA_LOOKBACK_DAYS = 90
 
@@ -84,9 +84,37 @@ def collect_us_financials():
             print(f"[us financials] {ticker} {name}: {len(results)} quarters")
 
 
+def collect_commodities():
+    with get_conn() as conn:
+        for symbol, name in COMMODITIES:
+            try:
+                rows = price_collector.fetch_price_history(symbol, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
+            except Exception as e:
+                print(f"[commodities] {symbol} {name}: failed ({e})")
+                continue
+            for date, close in rows:
+                upsert_price(conn, "commodity_prices", symbol, date, close)
+            print(f"[commodities] {symbol} {name}: {len(rows)} rows")
+
+
+def collect_bonds():
+    with get_conn() as conn:
+        for symbol, name in BONDS:
+            try:
+                rows = price_collector.fetch_price_history(symbol, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
+            except Exception as e:
+                print(f"[bonds] {symbol} {name}: failed ({e})")
+                continue
+            for date, close in rows:
+                upsert_price(conn, "bond_prices", symbol, date, close)
+            print(f"[bonds] {symbol} {name}: {len(rows)} rows")
+
+
 if __name__ == "__main__":
     init_db()
     collect_kr_market_data()
     collect_kr_financials()
     collect_us_market_data()
     collect_us_financials()
+    collect_commodities()
+    collect_bonds()
