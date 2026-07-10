@@ -1,0 +1,44 @@
+# 포트폴리오 리밸런싱 앱
+
+산업군별 상장 주식(시가총액/매출/영업이익/거래량), 원자재, 채권 데이터를 추적하여
+목표 자산배분(주식 50% / 원자재 30% / 채권 20%) 대비 리밸런싱을 돕는 개인용 로컬 앱.
+
+## 추적 산업군
+반도체, 방산, 조선, 에너지, 원전, 자율주행, 피지컬 AI, 화장품, 엔터테인먼트
+(반도체·방산·에너지·원전은 미국 대표주도 함께 추적)
+
+## 개발 단계
+- [x] Phase 1: 국내 주식 데이터 파이프라인 (pykrx + DART) + 뷰어
+- [ ] Phase 2: 미국 대표주 통합 (yfinance)
+- [ ] Phase 3: 원자재/채권 데이터 통합 (yfinance + FRED)
+- [ ] Phase 4: 포트폴리오 수동 입력 + 리밸런싱 계산 엔진
+- [ ] Phase 5: 대시보드 고도화
+
+## 설치
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+`.env`에 DART Open API 키를 채워넣으세요 (무료, https://opendart.fss.or.kr 에서 발급).
+DART 키가 없어도 시가총액/거래량 수집은 정상 동작하며, 매출/영업이익 수집만 생략됩니다.
+
+## 데이터 수집
+
+```bash
+python -m app.collectors.run_collection
+```
+
+국내 9개 산업군 대표 종목의 최근 90일 시가총액/거래량, 최근 2개년 분기별 매출/영업이익을
+`data/portfolio.db` (SQLite)에 저장합니다.
+
+## 대시보드 실행
+
+```bash
+streamlit run app/dashboard.py
+```
+
+산업군을 선택해 시가총액/거래량 추이와 매출/영업이익을 확인할 수 있습니다.
