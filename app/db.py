@@ -103,3 +103,17 @@ def upsert_price(conn, table, symbol, date, close):
            ON CONFLICT(symbol, date) DO UPDATE SET close=excluded.close""",
         (symbol, date, close),
     )
+
+
+def upsert_holding(conn, ticker, quantity, asset_class):
+    conn.execute(
+        """INSERT INTO holdings (ticker, quantity, asset_class)
+           VALUES (?, ?, ?)
+           ON CONFLICT(ticker) DO UPDATE SET quantity=excluded.quantity,
+               asset_class=excluded.asset_class""",
+        (ticker, quantity, asset_class),
+    )
+
+
+def delete_holding(conn, ticker):
+    conn.execute("DELETE FROM holdings WHERE ticker = ?", (ticker,))
