@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS holdings (
     quantity REAL NOT NULL,
     asset_class TEXT NOT NULL CHECK (asset_class IN ('stock', 'commodity', 'bond'))
 );
+
+CREATE TABLE IF NOT EXISTS news_keywords (
+    keyword TEXT PRIMARY KEY
+);
 """
 
 
@@ -117,3 +121,19 @@ def upsert_holding(conn, ticker, quantity, asset_class):
 
 def delete_holding(conn, ticker):
     conn.execute("DELETE FROM holdings WHERE ticker = ?", (ticker,))
+
+
+def add_news_keyword(conn, keyword):
+    conn.execute(
+        "INSERT INTO news_keywords (keyword) VALUES (?) ON CONFLICT(keyword) DO NOTHING",
+        (keyword,),
+    )
+
+
+def remove_news_keyword(conn, keyword):
+    conn.execute("DELETE FROM news_keywords WHERE keyword = ?", (keyword,))
+
+
+def list_news_keywords(conn):
+    rows = conn.execute("SELECT keyword FROM news_keywords ORDER BY keyword").fetchall()
+    return [row[0] for row in rows]

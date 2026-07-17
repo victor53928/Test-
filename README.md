@@ -55,3 +55,12 @@ streamlit run app/dashboard.py
 > 국내 종목은 원화, 미국 종목·원자재·TLT는 달러로 가격이 매겨져 있어 `.env`의
 > `USD_KRW_RATE` 값으로 환산해 하나의 포트폴리오로 합산합니다. 실시간 환율이 아니라
 > 수동 설정값이므로 실제 환율과 크게 벌어지면 `.env`에서 값을 갱신해주세요.
+
+## 종목 뉴스 (네이버 뉴스)
+
+왼쪽 사이드바의 "뉴스" 페이지에서 관심 종목/키워드를 등록하면 네이버 뉴스 검색 결과를
+키워드별 탭으로 모아 볼 수 있습니다 (최신순/관련도순 정렬 지원).
+
+사용하려면 [네이버 개발자 센터](https://developers.naver.com/apps/#/register)에서
+애플리케이션을 등록하고 "검색" API를 사용 설정한 뒤, 발급받은 Client ID/Secret을
+`.env`의 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`에 채워넣으세요 (무료).

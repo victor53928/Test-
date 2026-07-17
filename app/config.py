@@ -12,3 +12,8 @@ DART_API_KEY = os.getenv("DART_API_KEY", "")
 # Static USD->KRW rate used to combine KR and US holdings into one portfolio total.
 # Not live-updated; adjust in .env as the actual rate moves.
 USD_KRW_RATE = float(os.getenv("USD_KRW_RATE", "1400"))
+
+# Naver Search API (News) credentials - free, register at
+# https://developers.naver.com/apps/#/register
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
