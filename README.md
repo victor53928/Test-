@@ -55,3 +55,44 @@ streamlit run app/dashboard.py
 > 국내 종목은 원화, 미국 종목·원자재·TLT는 달러로 가격이 매겨져 있어 `.env`의
 > `USD_KRW_RATE` 값으로 환산해 하나의 포트폴리오로 합산합니다. 실시간 환율이 아니라
 > 수동 설정값이므로 실제 환율과 크게 벌어지면 `.env`에서 값을 갱신해주세요.
+
+## 관심종목 뉴스 & 시세 대시보드
+
+왼쪽 사이드바의 "관심종목" 페이지에서 내가 원하는 종목(국내 코스피/코스닥 또는 미국)을
+직접 등록하면, 종목별로 최신 시세/차트와 네이버 뉴스 검색 결과를 함께 볼 수 있습니다.
+뉴스 검색 키워드는 기본적으로 종목명을 사용하며, 원하면 종목별로 다른 키워드를 지정할 수 있습니다.
+
+### 네이버 API 키 발급
+
+1. https://developers.naver.com/apps 에서 애플리케이션을 등록합니다.
+2. 사용 API에서 "검색"을 추가합니다 (뉴스 검색에 사용, 무료).
+3. 발급된 Client ID / Client Secret을 `.env`의 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`에 채웁니다.
+
+키가 없어도 앱은 실행되지만, 관심종목 페이지의 뉴스 영역에는 경고 메시지만 표시됩니다.
+
+### 한계 (v1)
+
+- **시세는 실시간 스트리밍이 아닙니다.** 국내 종목은 pykrx, 미국 종목은 yfinance로 조회한
+  최신 종가/시세를 60초 캐시로 새로고침합니다.
+- **관심종목 목록은 재배포 시 초기화됩니다.** SQLite 파일(`data/portfolio.db`)은 저장소에
+  커밋되지 않으므로(`.gitignore`), Streamlit Community Cloud에 새로 `git push`할 때마다
+  컨테이너가 새로 빌드되며 관심종목 목록이 사라집니다. 배포 중 앱을 계속 쓰는 동안은 유지되지만,
+  코드를 업데이트할 때마다 다시 등록해야 합니다. 지속적으로 보관하려면 추후 외부 DB(예: 호스팅형
+  SQLite/Postgres) 연동이 필요합니다.
+
+## 배포 (Streamlit Community Cloud)
+
+1. 이 저장소를 GitHub에 push합니다.
+2. https://share.streamlit.io 에서 "New app"을 선택하고, 저장소/브랜치를 연결한 뒤
+   Main file path에 `app/dashboard.py`를 지정합니다.
+3. "Advanced settings" → "Secrets"에 아래와 같이 입력합니다 (TOML 형식):
+
+   ```toml
+   NAVER_CLIENT_ID = "..."
+   NAVER_CLIENT_SECRET = "..."
+   DART_API_KEY = "..."
+   USD_KRW_RATE = "1400"
+   ```
+
+4. 배포하면 공개 URL이 생성됩니다. 이후 `git push`할 때마다 자동 재배포됩니다
+   (단, 위 "한계" 항목에서 설명한 대로 관심종목 목록은 그때마다 초기화됩니다).

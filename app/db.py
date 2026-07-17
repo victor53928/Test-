@@ -48,6 +48,13 @@ CREATE TABLE IF NOT EXISTS holdings (
     quantity REAL NOT NULL,
     asset_class TEXT NOT NULL CHECK (asset_class IN ('stock', 'commodity', 'bond'))
 );
+
+CREATE TABLE IF NOT EXISTS watchlist (
+    ticker TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    market TEXT NOT NULL CHECK (market IN ('KOSPI', 'KOSDAQ', 'US')),
+    keyword TEXT
+);
 """
 
 
@@ -117,3 +124,25 @@ def upsert_holding(conn, ticker, quantity, asset_class):
 
 def delete_holding(conn, ticker):
     conn.execute("DELETE FROM holdings WHERE ticker = ?", (ticker,))
+
+
+def upsert_watchlist(conn, ticker, name, market, keyword=None):
+    conn.execute(
+        """INSERT INTO watchlist (ticker, name, market, keyword)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(ticker) DO UPDATE SET name=excluded.name,
+               market=excluded.market, keyword=excluded.keyword""",
+        (ticker, name, market, keyword or None),
+    )
+
+
+def delete_watchlist(conn, ticker):
+    conn.execute("DELETE FROM watchlist WHERE ticker = ?", (ticker,))
+
+
+def get_watchlist(conn):
+    rows = conn.execute("SELECT ticker, name, market, keyword FROM watchlist ORDER BY ticker").fetchall()
+    return [
+        {"ticker": ticker, "name": name, "market": market, "keyword": keyword or name}
+        for ticker, name, market, keyword in rows
+    ]
