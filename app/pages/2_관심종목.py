@@ -12,11 +12,9 @@ if str(_REPO_ROOT) not in sys.path:
 
 import streamlit as st
 
-from app.db import delete_watchlist, get_conn, get_watchlist, init_db, upsert_watchlist
+from app.db import delete_watchlist, get_conn, get_watchlist, upsert_watchlist
 from app.live_price import get_price_data
 from app.news import fetch_news
-
-init_db()
 
 MARKET_LABELS = {"KOSPI": "코스피", "KOSDAQ": "코스닥", "US": "미국"}
 

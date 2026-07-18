@@ -63,6 +63,7 @@ def get_conn():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     try:
+        conn.executescript(SCHEMA)
         yield conn
         conn.commit()
     finally:
@@ -71,7 +72,7 @@ def get_conn():
 
 def init_db():
     with get_conn() as conn:
-        conn.executescript(SCHEMA)
+        pass  # get_conn() already runs SCHEMA; kept for existing call sites
 
 
 def upsert_stock(conn, ticker, name, sector_key, market):
