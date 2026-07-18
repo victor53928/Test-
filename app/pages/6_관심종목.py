@@ -138,12 +138,33 @@ else:
         st.markdown("**재무 상황**")
         try:
             valuation = _cached_valuation(entry["ticker"], entry["market"])
-            v1, v2, v3 = st.columns(3)
-            v1.metric("시가총액", format_money(valuation["market_cap"], CURRENCY_BY_MARKET[entry["market"]]))
-            v2.metric("PER", f"{valuation['per']:.2f}" if valuation["per"] else "N/A")
-            v3.metric("PBR", f"{valuation['pbr']:.2f}" if valuation["pbr"] else "N/A")
+            currency = CURRENCY_BY_MARKET[entry["market"]]
+
+            def _num(v, decimals=2):
+                return f"{v:,.{decimals}f}" if v is not None else "N/A"
+
+            def _pct(v):
+                return f"{v:.2f}%" if v is not None else "N/A"
+
+            row1 = st.columns(4)
+            row1[0].metric("시가총액", format_money(valuation["market_cap"], currency))
+            row1[1].metric("PER", _num(valuation["per"]))
+            row1[2].metric("PBR", _num(valuation["pbr"]))
+            row1[3].metric("EPS", format_money(valuation["eps"], currency, decimals=2))
+
+            row2 = st.columns(4)
+            row2[0].metric("BPS", format_money(valuation["bps"], currency, decimals=2))
+            row2[1].metric("배당수익률", _pct(valuation["dividend_yield"]))
+            row2[2].metric("주당배당금", format_money(valuation["dps"], currency, decimals=2))
+            row2[3].metric("ROE", _pct(valuation["roe"]))
+
+            row3 = st.columns(4)
+            row3[0].metric("52주 최고", format_money(valuation["week52_high"], currency, decimals=2))
+            row3[1].metric("52주 최저", format_money(valuation["week52_low"], currency, decimals=2))
+            row3[2].metric("평균거래량", _num(valuation["avg_volume"], decimals=0))
+            row3[3].metric("Beta", _num(valuation["beta"]))
         except Exception as e:
-            st.warning(f"PER/PBR/시가총액을 불러오지 못했습니다: {e}")
+            st.warning(f"재무 상황을 불러오지 못했습니다: {e}")
 
         try:
             trend = _cached_trend(entry["ticker"], entry["market"])

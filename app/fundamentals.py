@@ -1,7 +1,8 @@
-"""PER/PBR valuation and multi-year revenue/operating income trend for watchlist entries.
+"""Valuation (Yahoo-Finance-style detail) and multi-year revenue/operating
+income trend for watchlist entries.
 
-KR data comes from pykrx (PER/PBR) and DART (revenue/operating income, up to
-10 years of annual reports, requires DART_API_KEY). US/JP data comes from
+KR data comes from pykrx (valuation) and DART (revenue/operating income, up
+to 10 years of annual reports, requires DART_API_KEY). US/JP data comes from
 yfinance; free-tier annual financials there typically only go back ~4 years,
 which is a data-source limitation, not a bug.
 """
@@ -18,44 +19,107 @@ from app.config import DART_API_KEY
 
 MAX_TREND_YEARS = 10
 
+_EMPTY_VALUATION = {
+    "market_cap": None,
+    "per": None,
+    "pbr": None,
+    "eps": None,
+    "bps": None,
+    "dividend_yield": None,
+    "dps": None,
+    "week52_high": None,
+    "week52_low": None,
+    "avg_volume": None,
+    "beta": None,
+    "roe": None,
+}
+
 
 def get_valuation(ticker: str, market: str) -> dict:
-    """Returns {"per": float|None, "pbr": float|None, "market_cap": float|None}."""
+    """Returns a Yahoo-Finance-style set of valuation metrics (see
+    _EMPTY_VALUATION for the full key list). Each field is fetched
+    independently, so one missing/failed field doesn't blank out the rest."""
     if market in ("KOSPI", "KOSDAQ"):
         return _get_kr_valuation(ticker)
     return _get_yf_valuation(ticker)
 
 
 def _get_kr_valuation(ticker: str) -> dict:
+    result = dict(_EMPTY_VALUATION)
     today = datetime.date.today()
-    fromdate = (today - datetime.timedelta(days=14)).strftime("%Y%m%d")
-    todate = today.strftime("%Y%m%d")
 
-    df = stock.get_market_fundamental_by_date(fromdate, todate, ticker)
-    if df.empty:
-        return {"per": None, "pbr": None, "market_cap": None}
-
-    latest = df.iloc[-1]
-    per = float(latest["PER"]) if latest.get("PER") else None
-    pbr = float(latest["PBR"]) if latest.get("PBR") else None
-
-    market_cap = None
+    # PER/PBR/EPS/BPS/배당수익률/주당배당금 all come from one pykrx call.
     try:
-        cap_df = stock.get_market_cap_by_date(fromdate, todate, ticker)
-        if not cap_df.empty:
-            market_cap = float(cap_df["시가총액"].iloc[-1])
+        fromdate = (today - datetime.timedelta(days=14)).strftime("%Y%m%d")
+        todate = today.strftime("%Y%m%d")
+        df = stock.get_market_fundamental_by_date(fromdate, todate, ticker)
+        if not df.empty:
+            latest = df.iloc[-1]
+            result["per"] = float(latest["PER"]) if latest.get("PER") else None
+            result["pbr"] = float(latest["PBR"]) if latest.get("PBR") else None
+            result["eps"] = float(latest["EPS"]) if latest.get("EPS") else None
+            result["bps"] = float(latest["BPS"]) if latest.get("BPS") else None
+            result["dividend_yield"] = float(latest["DIV"]) if latest.get("DIV") else None
+            result["dps"] = float(latest["DPS"]) if latest.get("DPS") else None
+            if result["eps"] and result["bps"]:
+                result["roe"] = result["eps"] / result["bps"] * 100
     except Exception:
         pass
 
-    return {"per": per, "pbr": pbr, "market_cap": market_cap}
+    # Market cap fetched independently -- must not depend on the fundamental
+    # call above succeeding (KR stocks without published PER/PBR, e.g. due to
+    # negative earnings, otherwise ended up with no market cap either).
+    try:
+        fromdate14 = (today - datetime.timedelta(days=14)).strftime("%Y%m%d")
+        todate = today.strftime("%Y%m%d")
+        cap_df = stock.get_market_cap_by_date(fromdate14, todate, ticker)
+        if not cap_df.empty:
+            result["market_cap"] = float(cap_df["시가총액"].iloc[-1])
+    except Exception:
+        pass
+
+    # 52-week high/low + average volume, from a separate 1-year OHLCV pull.
+    try:
+        fromdate365 = (today - datetime.timedelta(days=365)).strftime("%Y%m%d")
+        todate = today.strftime("%Y%m%d")
+        ohlcv = stock.get_market_ohlcv_by_date(fromdate365, todate, ticker)
+        if not ohlcv.empty:
+            result["week52_high"] = float(ohlcv["고가"].max())
+            result["week52_low"] = float(ohlcv["저가"].min())
+            result["avg_volume"] = float(ohlcv["거래량"].mean())
+    except Exception:
+        pass
+
+    return result
 
 
 def _get_yf_valuation(ticker: str) -> dict:
+    result = dict(_EMPTY_VALUATION)
     try:
         info = yf.Ticker(ticker).info
     except Exception:
-        return {"per": None, "pbr": None, "market_cap": None}
-    return {"per": info.get("trailingPE"), "pbr": info.get("priceToBook"), "market_cap": info.get("marketCap")}
+        return result
+
+    result["market_cap"] = info.get("marketCap")
+    result["per"] = info.get("trailingPE")
+    result["pbr"] = info.get("priceToBook")
+    result["eps"] = info.get("trailingEps")
+    result["bps"] = info.get("bookValue")
+    result["dps"] = info.get("dividendRate")
+    result["week52_high"] = info.get("fiftyTwoWeekHigh")
+    result["week52_low"] = info.get("fiftyTwoWeekLow")
+    result["avg_volume"] = info.get("averageVolume")
+    result["beta"] = info.get("beta")
+
+    raw_div_yield = info.get("dividendYield")
+    if raw_div_yield is not None:
+        result["dividend_yield"] = raw_div_yield * 100 if raw_div_yield < 1 else raw_div_yield
+
+    raw_roe = info.get("returnOnEquity")
+    if raw_roe is not None:
+        result["roe"] = raw_roe * 100 if abs(raw_roe) < 1 else raw_roe
+
+    return result
 
 
 def get_financial_trend(ticker: str, market: str) -> list:
