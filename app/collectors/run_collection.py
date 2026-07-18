@@ -19,7 +19,7 @@ from app.db import (
     upsert_price,
     upsert_stock,
 )
-from app.sectors import BONDS, COMMODITIES, SECTORS
+from app.sectors import BONDS, COMMODITIES, SECTORS, all_index_symbols
 
 # 10 years, to cover the longest selectable chart period (10년) in the dashboard.
 MARKET_DATA_LOOKBACK_DAYS = 3650
@@ -161,6 +161,19 @@ def collect_bonds():
             print(f"[bonds] {symbol} {name}: {len(rows)} rows")
 
 
+def collect_indices():
+    with get_conn() as conn:
+        for symbol, name in all_index_symbols():
+            try:
+                rows = price_collector.fetch_price_history(symbol, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
+            except Exception as e:
+                print(f"[indices] {symbol} {name}: failed ({e})")
+                continue
+            for date, close in rows:
+                upsert_price(conn, "index_prices", symbol, date, close)
+            print(f"[indices] {symbol} {name}: {len(rows)} rows")
+
+
 if __name__ == "__main__":
     init_db()
     with get_conn() as conn:
@@ -173,3 +186,4 @@ if __name__ == "__main__":
     collect_jp_financials()
     collect_commodities()
     collect_bonds()
+    collect_indices()

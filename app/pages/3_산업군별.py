@@ -300,6 +300,14 @@ else:
             st.caption("거래량")
             st.bar_chart(chart_df.pivot(index="date", columns="name", values="volume"))
 
+            st.caption("거래대금 추이 (종가 × 거래량 근사치)")
+            chart_df = chart_df.copy()
+            chart_df["trading_value"] = chart_df["close"] * chart_df["volume"]
+            st.altair_chart(
+                _labeled_line_chart(chart_df, "trading_value", f"거래대금 ({currency})", currency),
+                use_container_width=True,
+            )
+
     market_financials = financials_df[financials_df["ticker"].isin(market_tickers)]
     if not market_financials.empty:
         fin_display = market_financials.copy()

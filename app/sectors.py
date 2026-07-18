@@ -213,3 +213,19 @@ BONDS = [
     ("TLT", "미국 장기채 ETF"),
     ("148070.KS", "국고채 10년 ETF (KOSEF)"),
 ]
+
+# Major market indices (마켓정보 page), grouped by country.
+INDICES = [
+    {"country": "KR", "label": "🇰🇷 한국", "symbols": [("^KS11", "코스피"), ("^KQ11", "코스닥")]},
+    {"country": "JP", "label": "🇯🇵 일본", "symbols": [("^N225", "닛케이225")]},
+    {"country": "TW", "label": "🇹🇼 대만", "symbols": [("^TWII", "대만가권지수")]},
+    {
+        "country": "US",
+        "label": "🇺🇸 미국",
+        "symbols": [("^GSPC", "S&P 500"), ("^DJI", "다우존스"), ("^IXIC", "나스닥")],
+    },
+]
+
+
+def all_index_symbols():
+    return [(sym, name) for group in INDICES for sym, name in group["symbols"]]

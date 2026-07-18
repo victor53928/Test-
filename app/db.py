@@ -63,6 +63,13 @@ CREATE TABLE IF NOT EXISTS sector_stocks (
     market TEXT NOT NULL CHECK (market IN ('KR', 'US', 'JP')),
     PRIMARY KEY (sector_key, ticker)
 );
+
+CREATE TABLE IF NOT EXISTS index_prices (
+    symbol TEXT NOT NULL,
+    date TEXT NOT NULL,
+    close REAL,
+    PRIMARY KEY (symbol, date)
+);
 """
 
 
