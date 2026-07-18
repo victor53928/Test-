@@ -43,8 +43,8 @@ def collect_kr_market_data():
 
     with get_conn() as conn:
         for ticker, name, sector_key in _tickers_by_market(conn, "KR"):
-            upsert_stock(conn, ticker, name, sector_key, "KR")
             try:
+                upsert_stock(conn, ticker, name, sector_key, "KR")
                 rows = krx_collector.fetch_market_data(ticker, fromdate, todate)
             except Exception as e:
                 print(f"[kr market_data] {ticker} {name}: failed ({e})")
@@ -81,8 +81,8 @@ def collect_kr_financials():
 def collect_us_market_data():
     with get_conn() as conn:
         for ticker, name, sector_key in _tickers_by_market(conn, "US"):
-            upsert_stock(conn, ticker, name, sector_key, "US")
             try:
+                upsert_stock(conn, ticker, name, sector_key, "US")
                 rows = us_collector.fetch_market_data(ticker, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
             except Exception as e:
                 print(f"[us market_data] {ticker} {name}: failed ({e})")
@@ -111,8 +111,8 @@ def collect_jp_market_data():
     # works unchanged here.
     with get_conn() as conn:
         for ticker, name, sector_key in _tickers_by_market(conn, "JP"):
-            upsert_stock(conn, ticker, name, sector_key, "JP")
             try:
+                upsert_stock(conn, ticker, name, sector_key, "JP")
                 rows = us_collector.fetch_market_data(ticker, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
             except Exception as e:
                 print(f"[jp market_data] {ticker} {name}: failed ({e})")

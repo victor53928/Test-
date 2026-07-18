@@ -14,7 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from app.db import delete_watchlist, get_conn, get_watchlist, upsert_watchlist
-from app.formatting import format_money
+from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, format_money
 from app.fundamentals import get_financial_trend, get_valuation
 from app.live_price import get_price_data
 from app.news import SOURCE_DOMAINS, fetch_news
@@ -63,10 +63,17 @@ else:
 
     st.divider()
 
+period = st.radio(
+    "시세 그래프 기간",
+    options=list(PERIOD_OPTIONS.keys()),
+    index=list(PERIOD_OPTIONS.keys()).index(DEFAULT_PERIOD),
+    horizontal=True,
+)
+
 
 @st.cache_data(ttl=60)
-def _cached_price_data(ticker: str, market: str):
-    return get_price_data(ticker, market)
+def _cached_price_data(ticker: str, market: str, days: int):
+    return get_price_data(ticker, market, days=days)
 
 
 @st.cache_data(ttl=3600)
@@ -91,7 +98,7 @@ for entry in watchlist:
         with price_col:
             st.markdown("**시세**")
             try:
-                data = _cached_price_data(entry["ticker"], entry["market"])
+                data = _cached_price_data(entry["ticker"], entry["market"], PERIOD_OPTIONS[period])
                 delta = f"{data['change_pct']:.2f}%" if data["change_pct"] is not None else None
                 history = data["history"]
                 latest_volume = history["volume"].iloc[-1] if not history.empty else None

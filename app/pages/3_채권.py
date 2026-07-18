@@ -1,4 +1,4 @@
-"""Bond prices / yields (US 10Y, TLT, KR govt bond ETF).
+"""Bond prices / yields (US 10Y, TLT, KR govt bond ETF), split by currency.
 
 Run with: streamlit run app/dashboard.py (this page appears in the sidebar nav)
 """
@@ -22,16 +22,17 @@ st.title("채권 가격 / 금리")
 
 name_map = dict(BONDS)
 _KRW_BOND_SYMBOLS = {"148070.KS"}
-
-
-def _bond_currency(symbol: str) -> str:
-    return "KRW" if symbol in _KRW_BOND_SYMBOLS else "USD"
+CURRENCY_GROUPS = {
+    "KRW": ("🇰🇷 원화 채권", [sym for sym, _ in BONDS if sym in _KRW_BOND_SYMBOLS]),
+    "USD": ("🇺🇸 달러 채권", [sym for sym, _ in BONDS if sym not in _KRW_BOND_SYMBOLS]),
+}
 
 
 def _format_bond_value(symbol: str, close) -> str:
     if symbol == "^TNX":  # yield, not a price
         return "N/A" if pd.isna(close) else f"{close:.2f}%"
-    return format_money(close, _bond_currency(symbol), decimals=2)
+    currency = "KRW" if symbol in _KRW_BOND_SYMBOLS else "USD"
+    return format_money(close, currency, decimals=2)
 
 
 period = st.radio(
@@ -48,15 +49,20 @@ if bonds_df.empty:
 bonds_df["name"] = bonds_df["symbol"].map(name_map)
 bonds_df = filter_by_period(bonds_df, "date", period)
 
-latest_rows = bonds_df.sort_values("date").groupby("symbol").tail(1)
-display_df = pd.DataFrame(
-    {
-        "채권": latest_rows["name"],
-        "티커": latest_rows["symbol"],
-        "가격/금리": [_format_bond_value(row.symbol, row.close) for row in latest_rows.itertuples()],
-    }
-)
-st.dataframe(display_df, use_container_width=True, hide_index=True)
+for currency, (label, symbols) in CURRENCY_GROUPS.items():
+    group_df = bonds_df[bonds_df["symbol"].isin(symbols)]
+    if group_df.empty:
+        continue
 
-st.subheader("가격 / 금리 추이")
-st.line_chart(bonds_df.pivot(index="date", columns="name", values="close"))
+    st.markdown(f"### {label} ({currency})")
+
+    latest_rows = group_df.sort_values("date").groupby("symbol").tail(1)
+    display_df = pd.DataFrame(
+        {
+            "채권": latest_rows["name"],
+            "티커": latest_rows["symbol"],
+            "가격/금리": [_format_bond_value(row.symbol, row.close) for row in latest_rows.itertuples()],
+        }
+    )
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.line_chart(group_df.pivot(index="date", columns="name", values="close"))

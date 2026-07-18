@@ -66,11 +66,47 @@ CREATE TABLE IF NOT EXISTS sector_stocks (
 """
 
 
+# Tables whose CHECK constraint gained new allowed values (JP) after they may
+# already have been created by an older version of this app. `CREATE TABLE IF
+# NOT EXISTS` is a no-op on a table that already exists, so a pre-existing
+# data/portfolio.db would keep rejecting JP rows forever without this migration.
+_LEGACY_MIGRATIONS = {
+    "stocks": """
+        CREATE TABLE stocks (
+            ticker TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            sector_key TEXT NOT NULL,
+            market TEXT NOT NULL CHECK (market IN ('KR', 'US', 'JP'))
+        )
+    """,
+    "watchlist": """
+        CREATE TABLE watchlist (
+            ticker TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            market TEXT NOT NULL CHECK (market IN ('KOSPI', 'KOSDAQ', 'US', 'JP')),
+            keyword TEXT
+        )
+    """,
+}
+
+
+def _migrate_legacy_check_constraints(conn):
+    for table, create_sql in _LEGACY_MIGRATIONS.items():
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+        if row is None or row[0] is None or "'JP'" in row[0]:
+            continue  # table doesn't exist yet (SCHEMA below will create it), or already migrated
+        conn.execute(f"ALTER TABLE {table} RENAME TO {table}_legacy")
+        conn.execute(create_sql)
+        conn.execute(f"INSERT INTO {table} SELECT * FROM {table}_legacy")
+        conn.execute(f"DROP TABLE {table}_legacy")
+
+
 @contextmanager
 def get_conn():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     try:
+        _migrate_legacy_check_constraints(conn)
         conn.executescript(SCHEMA)
         yield conn
         conn.commit()
