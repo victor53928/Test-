@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS stocks (
     ticker TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     sector_key TEXT NOT NULL,
-    market TEXT NOT NULL CHECK (market IN ('KR', 'US'))
+    market TEXT NOT NULL CHECK (market IN ('KR', 'US', 'JP'))
 );
 
 CREATE TABLE IF NOT EXISTS market_data (

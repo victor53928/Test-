@@ -1,7 +1,9 @@
 """Industry sector definitions and representative tickers.
 
 Sectors flagged with has_us=True are heavily influenced by US markets, so
-representative US-listed stocks are tracked alongside the KR names.
+representative US-listed stocks are tracked alongside the KR names. Every
+sector also tracks representative Japan-listed stocks (jp_stocks) for
+cross-market comparison.
 """
 
 SECTORS = [
@@ -22,6 +24,11 @@ SECTORS = [
             ("TSM", "TSMC"),
             ("AVGO", "Broadcom"),
         ],
+        "jp_stocks": [
+            ("8035.T", "Tokyo Electron"),
+            ("6857.T", "Advantest"),
+            ("6723.T", "Renesas Electronics"),
+        ],
     },
     {
         "key": "defense",
@@ -39,6 +46,10 @@ SECTORS = [
             ("NOC", "Northrop Grumman"),
             ("GD", "General Dynamics"),
         ],
+        "jp_stocks": [
+            ("7011.T", "Mitsubishi Heavy Industries"),
+            ("7013.T", "IHI Corporation"),
+        ],
     },
     {
         "key": "shipbuilding",
@@ -50,6 +61,10 @@ SECTORS = [
             ("042660", "한화오션"),
         ],
         "us_stocks": [],
+        "jp_stocks": [
+            ("7003.T", "Mitsui E&S"),
+            ("7014.T", "Namura Shipbuilding"),
+        ],
     },
     {
         "key": "energy",
@@ -65,6 +80,10 @@ SECTORS = [
             ("XOM", "ExxonMobil"),
             ("CVX", "Chevron"),
             ("OXY", "Occidental Petroleum"),
+        ],
+        "jp_stocks": [
+            ("5020.T", "ENEOS Holdings"),
+            ("1605.T", "Inpex"),
         ],
     },
     {
@@ -82,6 +101,10 @@ SECTORS = [
             ("CEG", "Constellation Energy"),
             ("SMR", "NuScale Power"),
         ],
+        "jp_stocks": [
+            ("6501.T", "Hitachi"),
+            ("9503.T", "Kansai Electric Power"),
+        ],
     },
     {
         "key": "autonomous_driving",
@@ -93,6 +116,10 @@ SECTORS = [
             ("005380", "현대차"),
         ],
         "us_stocks": [],
+        "jp_stocks": [
+            ("7203.T", "Toyota Motor"),
+            ("6902.T", "Denso"),
+        ],
     },
     {
         "key": "physical_ai",
@@ -104,6 +131,10 @@ SECTORS = [
             ("058610", "에스피지"),
         ],
         "us_stocks": [],
+        "jp_stocks": [
+            ("6954.T", "Fanuc"),
+            ("6506.T", "Yaskawa Electric"),
+        ],
     },
     {
         "key": "cosmetics",
@@ -115,6 +146,10 @@ SECTORS = [
             ("192820", "코스맥스"),
         ],
         "us_stocks": [],
+        "jp_stocks": [
+            ("4911.T", "Shiseido"),
+            ("4452.T", "Kao Corporation"),
+        ],
     },
     {
         "key": "entertainment",
@@ -127,6 +162,28 @@ SECTORS = [
             ("122870", "와이지엔터테인먼트"),
         ],
         "us_stocks": [],
+        "jp_stocks": [
+            ("6758.T", "Sony Group"),
+            ("9602.T", "Toho"),
+        ],
+    },
+    {
+        "key": "battery",
+        "name_kr": "2차전지/배터리",
+        "has_us": True,
+        "kr_stocks": [
+            ("373220", "LG에너지솔루션"),
+            ("006400", "삼성SDI"),
+            ("247540", "에코프로비엠"),
+        ],
+        "us_stocks": [
+            ("TSLA", "Tesla"),
+            ("ALB", "Albemarle"),
+        ],
+        "jp_stocks": [
+            ("6752.T", "Panasonic Holdings"),
+            ("6762.T", "TDK Corporation"),
+        ],
     },
 ]
 
@@ -137,6 +194,10 @@ def all_kr_tickers():
 
 def all_us_tickers():
     return [(t, name, s["key"]) for s in SECTORS for t, name in s["us_stocks"]]
+
+
+def all_jp_tickers():
+    return [(t, name, s["key"]) for s in SECTORS for t, name in s["jp_stocks"]]
 
 
 # Commodity and bond proxies tracked via yfinance (Phase 3)

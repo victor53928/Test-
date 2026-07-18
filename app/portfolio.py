@@ -3,11 +3,14 @@
 Target allocation: stock 50% / commodity 30% / bond 20%.
 
 KR holdings are priced in KRW; US stocks, commodity futures and TLT are priced
-in USD. Everything is converted to KRW (via config.USD_KRW_RATE) before being
-combined, otherwise weights would be meaningless.
+in USD; JP stocks are priced in JPY. Everything is converted to KRW (via
+config.USD_KRW_RATE / JPY_KRW_RATE) before being combined, otherwise weights
+would be meaningless.
 """
 
-from app.config import USD_KRW_RATE
+from app.config import JPY_KRW_RATE, USD_KRW_RATE
+
+_MARKET_TO_CURRENCY = {"KR": "KRW", "US": "USD", "JP": "JPY"}
 
 TARGET_WEIGHTS = {"stock": 0.50, "commodity": 0.30, "bond": 0.20}
 REBALANCE_TOLERANCE = 0.05  # 5 percentage points
@@ -35,7 +38,7 @@ def get_currency(conn, asset_class: str, ticker: str) -> str:
     if asset_class == "stock":
         row = conn.execute("SELECT market FROM stocks WHERE ticker = ?", (ticker,)).fetchone()
         market = row[0] if row else "KR"
-        return "KRW" if market == "KR" else "USD"
+        return _MARKET_TO_CURRENCY.get(market, "USD")
     if asset_class == "commodity":
         return "USD"
     if asset_class == "bond":
@@ -43,8 +46,13 @@ def get_currency(conn, asset_class: str, ticker: str) -> str:
     raise ValueError(asset_class)
 
 
+_CONVERSION_RATE_TO_KRW = {"USD": USD_KRW_RATE, "JPY": JPY_KRW_RATE}
+
+
 def to_krw(amount: float, currency: str) -> float:
-    return amount if currency == "KRW" else amount * USD_KRW_RATE
+    if currency == "KRW":
+        return amount
+    return amount * _CONVERSION_RATE_TO_KRW[currency]
 
 
 def get_holdings_with_value(conn):

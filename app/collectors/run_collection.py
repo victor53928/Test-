@@ -10,9 +10,10 @@ import time
 from app.collectors import dart_collector, krx_collector, price_collector, us_collector
 from app.config import DART_API_KEY
 from app.db import get_conn, init_db, upsert_financials, upsert_market_data, upsert_price, upsert_stock
-from app.sectors import BONDS, COMMODITIES, all_kr_tickers, all_us_tickers
+from app.sectors import BONDS, COMMODITIES, all_jp_tickers, all_kr_tickers, all_us_tickers
 
-MARKET_DATA_LOOKBACK_DAYS = 90
+# 10 years, to cover the longest selectable chart period (10년) in the dashboard.
+MARKET_DATA_LOOKBACK_DAYS = 3650
 
 
 def collect_kr_market_data():
@@ -84,6 +85,36 @@ def collect_us_financials():
             print(f"[us financials] {ticker} {name}: {len(results)} quarters")
 
 
+def collect_jp_market_data():
+    # Japan tickers (e.g. 7203.T) are plain yfinance tickers, so the generic
+    # us_collector fetch logic (yfinance-based, nothing US-specific in it)
+    # works unchanged here.
+    with get_conn() as conn:
+        for ticker, name, sector_key in all_jp_tickers():
+            upsert_stock(conn, ticker, name, sector_key, "JP")
+            try:
+                rows = us_collector.fetch_market_data(ticker, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
+            except Exception as e:
+                print(f"[jp market_data] {ticker} {name}: failed ({e})")
+                continue
+            for date, close, market_cap, volume in rows:
+                upsert_market_data(conn, ticker, date, close, market_cap, volume)
+            print(f"[jp market_data] {ticker} {name}: {len(rows)} rows")
+
+
+def collect_jp_financials():
+    with get_conn() as conn:
+        for ticker, name, sector_key in all_jp_tickers():
+            try:
+                results = us_collector.fetch_financials(ticker)
+            except Exception as e:
+                print(f"[jp financials] {ticker} {name}: failed ({e})")
+                continue
+            for year, quarter, revenue, operating_income in results:
+                upsert_financials(conn, ticker, year, quarter, revenue, operating_income)
+            print(f"[jp financials] {ticker} {name}: {len(results)} quarters")
+
+
 def collect_commodities():
     with get_conn() as conn:
         for symbol, name in COMMODITIES:
@@ -116,5 +147,7 @@ if __name__ == "__main__":
     collect_kr_financials()
     collect_us_market_data()
     collect_us_financials()
+    collect_jp_market_data()
+    collect_jp_financials()
     collect_commodities()
     collect_bonds()
