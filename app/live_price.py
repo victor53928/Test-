@@ -1,6 +1,6 @@
 """Latest price + recent history for watchlist entries.
 
-KR tickers (KOSPI/KOSDAQ) go through pykrx; US tickers go through yfinance.
+KR tickers (KOSPI/KOSDAQ) go through pykrx; US/JP tickers go through yfinance.
 "Latest" here means the most recent close/quote available from these
 providers (refreshed on whatever cache TTL the caller uses), not a
 tick-by-tick real-time feed.
@@ -12,20 +12,20 @@ import pandas as pd
 import yfinance as yf
 from pykrx import stock
 
-_CURRENCY_BY_MARKET = {"KOSPI": "KRW", "KOSDAQ": "KRW", "US": "USD"}
+_CURRENCY_BY_MARKET = {"KOSPI": "KRW", "KOSDAQ": "KRW", "US": "USD", "JP": "JPY"}
 
 
 def get_price_data(ticker: str, market: str, days: int = 90) -> dict:
     """Returns {latest_price, prev_close, change, change_pct, currency, market_cap, history}.
 
     `history` is a DataFrame with date/close/volume columns. `market_cap` is the
-    latest market cap (KR only for now; None for US since yfinance doesn't
+    latest market cap (KR only for now; None for US/JP since yfinance doesn't
     expose historical market cap directly).
     """
     if market in ("KOSPI", "KOSDAQ"):
         return _get_kr_price_data(ticker, days)
-    if market == "US":
-        return _get_us_price_data(ticker, days)
+    if market in ("US", "JP"):
+        return _get_yf_price_data(ticker, days, _CURRENCY_BY_MARKET[market])
     raise ValueError(f"unknown market: {market}")
 
 
@@ -70,7 +70,7 @@ def _get_kr_price_data(ticker: str, days: int) -> dict:
     return _summarize(dates, closes, volumes, "KRW", market_cap=market_cap)
 
 
-def _get_us_price_data(ticker: str, days: int) -> dict:
+def _get_yf_price_data(ticker: str, days: int, currency: str) -> dict:
     t = yf.Ticker(ticker)
     hist = t.history(period=f"{days}d")
     if hist.empty:
@@ -79,7 +79,7 @@ def _get_us_price_data(ticker: str, days: int) -> dict:
     dates = [d.strftime("%Y-%m-%d") for d in hist.index]
     closes = [float(v) for v in hist["Close"]]
     volumes = [int(v) for v in hist["Volume"]]
-    result = _summarize(dates, closes, volumes, "USD")
+    result = _summarize(dates, closes, volumes, currency)
 
     try:
         fast_info = t.fast_info

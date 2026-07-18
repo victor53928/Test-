@@ -1,4 +1,4 @@
-"""Watchlist: per-company Naver News + latest price/chart.
+"""Watchlist: per-company Naver News + latest price/chart + PER/PBR + revenue trend.
 
 Run with: streamlit run app/dashboard.py (this page appears in the sidebar nav)
 """
@@ -10,14 +10,16 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import pandas as pd
 import streamlit as st
 
 from app.db import delete_watchlist, get_conn, get_watchlist, upsert_watchlist
 from app.formatting import format_money
+from app.fundamentals import get_financial_trend, get_valuation
 from app.live_price import get_price_data
-from app.news import fetch_news
+from app.news import SOURCE_DOMAINS, fetch_news
 
-MARKET_LABELS = {"KOSPI": "코스피", "KOSDAQ": "코스닥", "US": "미국"}
+MARKET_LABELS = {"KOSPI": "코스피", "KOSDAQ": "코스닥", "US": "미국", "JP": "일본"}
 
 st.title("관심종목 뉴스 & 시세")
 
@@ -25,18 +27,24 @@ st.subheader("관심종목 추가")
 with st.form("add_watchlist_form", clear_on_submit=True):
     col1, col2, col3 = st.columns(3)
     with col1:
-        ticker = st.text_input("종목코드 (예: 005930, AAPL)")
+        ticker = st.text_input("종목코드 (예: 005930, AAPL, 7203.T)")
     with col2:
         name = st.text_input("종목명 (예: 삼성전자)")
     with col3:
         market = st.selectbox("시장", options=list(MARKET_LABELS.keys()), format_func=lambda k: MARKET_LABELS[k])
     keyword = st.text_input("뉴스 검색 키워드 (선택)", help="비워두면 종목명으로 뉴스를 검색합니다.")
     submitted = st.form_submit_button("추가")
-    if submitted and ticker and name:
-        with get_conn() as conn:
-            upsert_watchlist(conn, ticker.strip(), name.strip(), market, keyword.strip() or None)
-        st.success(f"{name} ({ticker})를 추가했습니다.")
-        st.rerun()
+    if submitted:
+        if not ticker.strip() or not name.strip():
+            st.error("종목코드와 종목명을 모두 입력해주세요.")
+        else:
+            try:
+                with get_conn() as conn:
+                    upsert_watchlist(conn, ticker.strip(), name.strip(), market, keyword.strip() or None)
+                st.success(f"{name} ({ticker})를 추가했습니다.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"추가하지 못했습니다: {e}")
 
 with get_conn() as conn:
     watchlist = get_watchlist(conn)
@@ -61,9 +69,19 @@ def _cached_price_data(ticker: str, market: str):
     return get_price_data(ticker, market)
 
 
+@st.cache_data(ttl=3600)
+def _cached_valuation(ticker: str, market: str):
+    return get_valuation(ticker, market)
+
+
+@st.cache_data(ttl=86400)
+def _cached_trend(ticker: str, market: str):
+    return get_financial_trend(ticker, market)
+
+
 @st.cache_data(ttl=300)
 def _cached_news(keyword: str):
-    return fetch_news(keyword)
+    return fetch_news(keyword, source_domains=list(SOURCE_DOMAINS.values()))
 
 
 for entry in watchlist:
@@ -98,13 +116,39 @@ for entry in watchlist:
                 st.warning(f"시세를 불러오지 못했습니다: {e}")
 
         with news_col:
-            st.markdown("**뉴스**")
+            st.markdown("**뉴스** (매일경제 · 한국경제)")
             try:
                 news_items = _cached_news(entry["keyword"])
                 if not news_items:
-                    st.caption("관련 뉴스가 없습니다.")
+                    st.caption("매일경제/한국경제에서 관련 기사를 찾지 못했습니다.")
                 for item in news_items:
-                    st.markdown(f"[{item['title']}]({item['link']})")
+                    label = f"[{item['source']}] " if item["source"] else ""
+                    st.markdown(f"{label}[{item['title']}]({item['link']})")
                     st.caption(f"{item['pubDate']} — {item['description']}")
             except Exception as e:
                 st.warning(f"뉴스를 불러오지 못했습니다: {e}")
+
+        st.markdown("**밸류에이션 / 실적 추이**")
+        try:
+            valuation = _cached_valuation(entry["ticker"], entry["market"])
+            v1, v2 = st.columns(2)
+            v1.metric("PER", f"{valuation['per']:.2f}" if valuation["per"] else "N/A")
+            v2.metric("PBR", f"{valuation['pbr']:.2f}" if valuation["pbr"] else "N/A")
+        except Exception as e:
+            st.warning(f"PER/PBR을 불러오지 못했습니다: {e}")
+
+        try:
+            trend = _cached_trend(entry["ticker"], entry["market"])
+            if not trend:
+                st.caption(
+                    "매출/영업이익 추이 데이터가 없습니다"
+                    + ("" if entry["market"] in ("US", "JP") else " (.env의 DART_API_KEY 설정이 필요합니다)."
+                    )
+                )
+            else:
+                trend_df = pd.DataFrame(trend).set_index("year")
+                trend_df = trend_df.rename(columns={"revenue": "매출", "operating_income": "영업이익"})
+                st.caption(f"연도별 매출 / 영업이익 추이 ({len(trend)}개년)")
+                st.bar_chart(trend_df[["매출", "영업이익"]])
+        except Exception as e:
+            st.warning(f"매출/영업이익 추이를 불러오지 못했습니다: {e}")

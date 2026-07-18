@@ -52,8 +52,16 @@ CREATE TABLE IF NOT EXISTS holdings (
 CREATE TABLE IF NOT EXISTS watchlist (
     ticker TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    market TEXT NOT NULL CHECK (market IN ('KOSPI', 'KOSDAQ', 'US')),
+    market TEXT NOT NULL CHECK (market IN ('KOSPI', 'KOSDAQ', 'US', 'JP')),
     keyword TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sector_stocks (
+    sector_key TEXT NOT NULL,
+    ticker TEXT NOT NULL,
+    name TEXT NOT NULL,
+    market TEXT NOT NULL CHECK (market IN ('KR', 'US', 'JP')),
+    PRIMARY KEY (sector_key, ticker)
 );
 """
 
@@ -83,6 +91,10 @@ def upsert_stock(conn, ticker, name, sector_key, market):
                sector_key=excluded.sector_key, market=excluded.market""",
         (ticker, name, sector_key, market),
     )
+
+
+def delete_stock(conn, ticker):
+    conn.execute("DELETE FROM stocks WHERE ticker = ?", (ticker,))
 
 
 def upsert_market_data(conn, ticker, date, close, market_cap, volume):
@@ -147,3 +159,44 @@ def get_watchlist(conn):
         {"ticker": ticker, "name": name, "market": market, "keyword": keyword or name}
         for ticker, name, market, keyword in rows
     ]
+
+
+def upsert_sector_stock(conn, sector_key, ticker, name, market):
+    conn.execute(
+        """INSERT INTO sector_stocks (sector_key, ticker, name, market)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(sector_key, ticker) DO UPDATE SET name=excluded.name, market=excluded.market""",
+        (sector_key, ticker, name, market),
+    )
+
+
+def delete_sector_stock(conn, sector_key, ticker):
+    conn.execute("DELETE FROM sector_stocks WHERE sector_key = ? AND ticker = ?", (sector_key, ticker))
+
+
+def get_sector_stocks(conn, sector_key):
+    rows = conn.execute(
+        "SELECT ticker, name, market FROM sector_stocks WHERE sector_key = ? ORDER BY market, ticker",
+        (sector_key,),
+    ).fetchall()
+    return [{"ticker": t, "name": n, "market": m} for t, n, m in rows]
+
+
+def get_all_sector_stocks(conn):
+    rows = conn.execute("SELECT sector_key, ticker, name, market FROM sector_stocks").fetchall()
+    return [{"sector_key": sk, "ticker": t, "name": n, "market": m} for sk, t, n, m in rows]
+
+
+def seed_sector_stocks_if_empty(conn, sectors):
+    """Populates sector_stocks from the sectors.py defaults on first run only;
+    once seeded, the table (editable via the UI) is the source of truth."""
+    count = conn.execute("SELECT COUNT(*) FROM sector_stocks").fetchone()[0]
+    if count > 0:
+        return
+    for sector in sectors:
+        for ticker, name in sector["kr_stocks"]:
+            upsert_sector_stock(conn, sector["key"], ticker, name, "KR")
+        for ticker, name in sector["us_stocks"]:
+            upsert_sector_stock(conn, sector["key"], ticker, name, "US")
+        for ticker, name in sector["jp_stocks"]:
+            upsert_sector_stock(conn, sector["key"], ticker, name, "JP")

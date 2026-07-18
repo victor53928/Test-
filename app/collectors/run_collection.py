@@ -9,11 +9,31 @@ import time
 
 from app.collectors import dart_collector, krx_collector, price_collector, us_collector
 from app.config import DART_API_KEY
-from app.db import get_conn, init_db, upsert_financials, upsert_market_data, upsert_price, upsert_stock
-from app.sectors import BONDS, COMMODITIES, all_jp_tickers, all_kr_tickers, all_us_tickers
+from app.db import (
+    get_all_sector_stocks,
+    get_conn,
+    init_db,
+    seed_sector_stocks_if_empty,
+    upsert_financials,
+    upsert_market_data,
+    upsert_price,
+    upsert_stock,
+)
+from app.sectors import BONDS, COMMODITIES, SECTORS
 
 # 10 years, to cover the longest selectable chart period (10년) in the dashboard.
 MARKET_DATA_LOOKBACK_DAYS = 3650
+
+
+def _tickers_by_market(conn, market):
+    """Reads sector membership from the (UI-editable) sector_stocks table rather
+    than the static sectors.py defaults, so stocks added/removed via the
+    산업군별 page are picked up by the next batch collection run too."""
+    return [
+        (row["ticker"], row["name"], row["sector_key"])
+        for row in get_all_sector_stocks(conn)
+        if row["market"] == market
+    ]
 
 
 def collect_kr_market_data():
@@ -22,7 +42,7 @@ def collect_kr_market_data():
     todate = today.strftime("%Y%m%d")
 
     with get_conn() as conn:
-        for ticker, name, sector_key in all_kr_tickers():
+        for ticker, name, sector_key in _tickers_by_market(conn, "KR"):
             upsert_stock(conn, ticker, name, sector_key, "KR")
             try:
                 rows = krx_collector.fetch_market_data(ticker, fromdate, todate)
@@ -44,7 +64,7 @@ def collect_kr_financials():
     current_year = datetime.date.today().year
 
     with get_conn() as conn:
-        for ticker, name, sector_key in all_kr_tickers():
+        for ticker, name, sector_key in _tickers_by_market(conn, "KR"):
             corp_code = corp_map.get(ticker)
             if not corp_code:
                 print(f"[kr financials] {ticker} {name}: no DART corp_code found")
@@ -60,7 +80,7 @@ def collect_kr_financials():
 
 def collect_us_market_data():
     with get_conn() as conn:
-        for ticker, name, sector_key in all_us_tickers():
+        for ticker, name, sector_key in _tickers_by_market(conn, "US"):
             upsert_stock(conn, ticker, name, sector_key, "US")
             try:
                 rows = us_collector.fetch_market_data(ticker, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
@@ -74,7 +94,7 @@ def collect_us_market_data():
 
 def collect_us_financials():
     with get_conn() as conn:
-        for ticker, name, sector_key in all_us_tickers():
+        for ticker, name, sector_key in _tickers_by_market(conn, "US"):
             try:
                 results = us_collector.fetch_financials(ticker)
             except Exception as e:
@@ -90,7 +110,7 @@ def collect_jp_market_data():
     # us_collector fetch logic (yfinance-based, nothing US-specific in it)
     # works unchanged here.
     with get_conn() as conn:
-        for ticker, name, sector_key in all_jp_tickers():
+        for ticker, name, sector_key in _tickers_by_market(conn, "JP"):
             upsert_stock(conn, ticker, name, sector_key, "JP")
             try:
                 rows = us_collector.fetch_market_data(ticker, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
@@ -104,7 +124,7 @@ def collect_jp_market_data():
 
 def collect_jp_financials():
     with get_conn() as conn:
-        for ticker, name, sector_key in all_jp_tickers():
+        for ticker, name, sector_key in _tickers_by_market(conn, "JP"):
             try:
                 results = us_collector.fetch_financials(ticker)
             except Exception as e:
@@ -143,6 +163,8 @@ def collect_bonds():
 
 if __name__ == "__main__":
     init_db()
+    with get_conn() as conn:
+        seed_sector_stocks_if_empty(conn, SECTORS)
     collect_kr_market_data()
     collect_kr_financials()
     collect_us_market_data()
