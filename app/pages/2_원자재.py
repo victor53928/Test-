@@ -34,8 +34,9 @@ if commodities_df.empty:
     st.stop()
 
 commodities_df["name"] = commodities_df["symbol"].map(name_map)
-commodities_df = filter_by_period(commodities_df, "date", period)
 
+# "Latest" must reflect the most recent trading day regardless of the chart
+# period filter below, so it's computed before filtering.
 latest_rows = commodities_df.sort_values("date").groupby("symbol").tail(1)
 display_df = pd.DataFrame(
     {
@@ -46,5 +47,6 @@ display_df = pd.DataFrame(
 )
 st.dataframe(display_df, use_container_width=True, hide_index=True)
 
+chart_df = filter_by_period(commodities_df, "date", period)
 st.subheader("가격 추이")
-st.line_chart(commodities_df.pivot(index="date", columns="name", values="close"))
+st.line_chart(chart_df.pivot(index="date", columns="name", values="close"))

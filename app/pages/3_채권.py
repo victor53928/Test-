@@ -47,16 +47,17 @@ if bonds_df.empty:
     st.stop()
 
 bonds_df["name"] = bonds_df["symbol"].map(name_map)
-bonds_df = filter_by_period(bonds_df, "date", period)
 
 for currency, (label, symbols) in CURRENCY_GROUPS.items():
-    group_df = bonds_df[bonds_df["symbol"].isin(symbols)]
-    if group_df.empty:
+    group_df_all = bonds_df[bonds_df["symbol"].isin(symbols)]
+    if group_df_all.empty:
         continue
 
     st.markdown(f"### {label} ({currency})")
 
-    latest_rows = group_df.sort_values("date").groupby("symbol").tail(1)
+    # "Latest" must reflect the most recent trading day regardless of the
+    # chart period filter below, so it's computed before filtering.
+    latest_rows = group_df_all.sort_values("date").groupby("symbol").tail(1)
     display_df = pd.DataFrame(
         {
             "채권": latest_rows["name"],
@@ -65,4 +66,6 @@ for currency, (label, symbols) in CURRENCY_GROUPS.items():
         }
     )
     st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    group_df = filter_by_period(group_df_all, "date", period)
     st.line_chart(group_df.pivot(index="date", columns="name", values="close"))

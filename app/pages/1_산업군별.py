@@ -1,6 +1,6 @@
-"""Sector browser: click a sector block, see KR/US/JP stocks side by side.
-Stocks per sector are editable (add/remove) via the DB-backed sector_stocks
-table, seeded once from sectors.py defaults.
+"""Sector browser: pick a sector block, then a market block, then which
+companies to chart. Stocks per sector are editable (add/remove) via the
+DB-backed sector_stocks table, seeded once from sectors.py defaults.
 
 Run with: streamlit run app/dashboard.py (this page appears in the sidebar nav)
 """
@@ -140,10 +140,6 @@ with st.expander("종목 추가 / 삭제"):
                 delete_stock(conn, remove_target)
             st.rerun()
 
-period = st.radio(
-    "기간", options=list(PERIOD_OPTIONS.keys()), index=list(PERIOD_OPTIONS.keys()).index(DEFAULT_PERIOD), horizontal=True
-)
-
 with get_conn() as conn:
     sector_stocks = get_sector_stocks(conn, selected_key)
 
@@ -152,58 +148,90 @@ if not sector_stocks:
     st.stop()
 
 stocks_df = pd.DataFrame(sector_stocks)
+available_markets = [m for m in ("KR", "US", "JP") if (stocks_df["market"] == m).any()]
+
+market_state_key = f"selected_market_{selected_key}"
+if st.session_state.get(market_state_key) not in available_markets:
+    st.session_state[market_state_key] = available_markets[0]
+
+st.caption("시장을 선택하세요.")
+market_cols = st.columns(len(available_markets))
+for col, market_code in zip(market_cols, available_markets):
+    with col:
+        is_selected = st.session_state[market_state_key] == market_code
+        if st.button(
+            MARKET_LABELS[market_code],
+            key=f"market_btn_{selected_key}_{market_code}",
+            use_container_width=True,
+            type="primary" if is_selected else "secondary",
+        ):
+            st.session_state[market_state_key] = market_code
+            st.rerun()
+
+market_code = st.session_state[market_state_key]
+currency = CURRENCY_BY_MARKET[market_code]
+market_stocks = stocks_df[stocks_df["market"] == market_code]
+market_tickers = market_stocks["ticker"].tolist()
+name_map = dict(zip(stocks_df["ticker"], stocks_df["name"]))
 
 with get_conn() as conn:
-    tickers = stocks_df["ticker"].tolist()
-    placeholders = ",".join("?" * len(tickers))
-    market_df = pd.read_sql(
-        f"SELECT * FROM market_data WHERE ticker IN ({placeholders}) ORDER BY date", conn, params=tickers
+    placeholders = ",".join("?" * len(market_tickers))
+    market_df_all = pd.read_sql(
+        f"SELECT * FROM market_data WHERE ticker IN ({placeholders}) ORDER BY date", conn, params=market_tickers
     )
     financials_df = pd.read_sql(
-        f"SELECT * FROM financials WHERE ticker IN ({placeholders}) ORDER BY year, quarter", conn, params=tickers
+        f"SELECT * FROM financials WHERE ticker IN ({placeholders}) ORDER BY year, quarter", conn, params=market_tickers
     )
+market_df_all["name"] = market_df_all["ticker"].map(name_map)
 
-name_map = dict(zip(stocks_df["ticker"], stocks_df["name"]))
-market_df["name"] = market_df["ticker"].map(name_map)
-market_df = filter_by_period(market_df, "date", period)
+st.markdown(f"### {MARKET_LABELS[market_code]} ({currency})")
 
-for market_code in ("KR", "US", "JP"):
-    market_stocks = stocks_df[stocks_df["market"] == market_code]
-    if market_stocks.empty:
-        continue
+# "Latest" values must reflect the most recently available trading day
+# regardless of the chart period filter below (e.g. selecting "1주일" must
+# not hide today's close just because a holiday pushed it near the window
+# edge) -- computed from the unfiltered data, not the period-filtered chart data.
+latest_rows = market_df_all.sort_values("date").groupby("ticker").tail(1)
+summary = market_stocks[["ticker", "name"]].merge(latest_rows, on=["ticker", "name"], how="left")
+display_df = pd.DataFrame(
+    {
+        "종목명": summary["name"],
+        "티커": summary["ticker"],
+        "종가": summary["close"].map(lambda v: format_money(v, currency, decimals=2) if pd.notna(v) else "N/A"),
+        "시가총액": summary["market_cap"].map(lambda v: format_money(v, currency) if pd.notna(v) else "N/A"),
+        "거래량": summary["volume"].map(lambda v: f"{v:,.0f}" if pd.notna(v) else "N/A"),
+    }
+)
+if summary["close"].isna().all():
+    st.caption("아직 시세 데이터가 없습니다. `python -m app.collectors.run_collection`을 실행하면 채워집니다.")
+st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-    currency = CURRENCY_BY_MARKET[market_code]
-    st.markdown(f"### {MARKET_LABELS[market_code]} ({currency})")
+company_options = market_stocks["name"].tolist()
+selected_companies = st.multiselect(
+    "그래프에 표시할 종목 선택", options=company_options, default=company_options, key=f"companies_{selected_key}_{market_code}"
+)
 
-    market_tickers = market_stocks["ticker"].tolist()
-    latest_rows = (
-        market_df[market_df["ticker"].isin(market_tickers)].sort_values("date").groupby("ticker").tail(1)
-    )
-    summary = market_stocks[["ticker", "name"]].merge(latest_rows, on=["ticker", "name"], how="left")
-    display_df = pd.DataFrame(
-        {
-            "종목명": summary["name"],
-            "티커": summary["ticker"],
-            "종가": summary["close"].map(lambda v: format_money(v, currency, decimals=2)),
-            "시가총액": summary["market_cap"].map(lambda v: format_money(v, currency)),
-            "거래량": summary["volume"].map(lambda v: f"{v:,.0f}" if pd.notna(v) else "N/A"),
-        }
-    )
-    if summary["close"].isna().all():
-        st.caption("아직 시세 데이터가 없습니다. `python -m app.collectors.run_collection`을 실행하면 채워집니다.")
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+chart_area = st.container()
+period = st.radio(
+    "기간", options=list(PERIOD_OPTIONS.keys()), index=list(PERIOD_OPTIONS.keys()).index(DEFAULT_PERIOD), horizontal=True
+)
 
-    chart_df = market_df[market_df["ticker"].isin(market_tickers)]
-    if not chart_df.empty:
+chart_df = market_df_all[market_df_all["name"].isin(selected_companies)]
+chart_df = filter_by_period(chart_df, "date", period)
+with chart_area:
+    if not selected_companies:
+        st.caption("표시할 종목을 선택해주세요.")
+    elif chart_df.empty:
+        st.caption("표시할 데이터가 없습니다.")
+    else:
         st.line_chart(chart_df.pivot(index="date", columns="name", values="market_cap"))
         st.caption("거래량")
         st.bar_chart(chart_df.pivot(index="date", columns="name", values="volume"))
 
-    market_financials = financials_df[financials_df["ticker"].isin(market_tickers)]
-    if not market_financials.empty:
-        fin_display = market_financials.copy()
-        fin_display["name"] = fin_display["ticker"].map(name_map)
-        fin_display["revenue"] = fin_display["revenue"].map(lambda v: format_money(v, currency))
-        fin_display["operating_income"] = fin_display["operating_income"].map(lambda v: format_money(v, currency))
-        with st.expander(f"{MARKET_LABELS[market_code]} 매출 / 영업이익"):
-            st.dataframe(fin_display, use_container_width=True, hide_index=True)
+market_financials = financials_df[financials_df["ticker"].isin(market_tickers)]
+if not market_financials.empty:
+    fin_display = market_financials.copy()
+    fin_display["name"] = fin_display["ticker"].map(name_map)
+    fin_display["revenue"] = fin_display["revenue"].map(lambda v: format_money(v, currency))
+    fin_display["operating_income"] = fin_display["operating_income"].map(lambda v: format_money(v, currency))
+    with st.expander(f"{MARKET_LABELS[market_code]} 매출 / 영업이익"):
+        st.dataframe(fin_display, use_container_width=True, hide_index=True)
