@@ -32,8 +32,10 @@ from app.db import (
 from app.formatting import CURRENCY_BY_MARKET, DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money
 from app.live_price import get_price_data
 from app.sectors import SECTORS
+from app.ticker_lookup import resolve_kr_ticker, resolve_yf_ticker
 
 LOOKBACK_DAYS = PERIOD_OPTIONS["10년"]
+FALLBACK_DAYS = 30  # live-fetch window used when the batch-collected data is missing/stale
 MARKET_LABELS = {"KR": "🇰🇷 한국", "US": "🇺🇸 미국", "JP": "🇯🇵 일본"}
 STALE_DAYS = 5  # if the DB's latest row for a KR ticker is older than this, try a live pykrx fetch instead
 
@@ -44,7 +46,7 @@ def _live_kr_fallback(ticker: str):
     table has no (or stale) data for a KR ticker. "KOSPI" here only routes to
     the KR code path in live_price.get_price_data -- it works the same for
     KOSDAQ tickers too, since pykrx itself doesn't need that distinction."""
-    return get_price_data(ticker, "KOSPI", days=14)
+    return get_price_data(ticker, "KOSPI", days=FALLBACK_DAYS)
 
 st.set_page_config(page_title="산업군별 주식", layout="wide")
 st.title("산업군별 주식")
@@ -115,26 +117,32 @@ st.divider()
 st.subheader(selected_sector["name_kr"])
 
 with st.expander("종목 추가 / 삭제"):
+    st.caption("종목명만 입력하면 종목코드를 자동으로 찾습니다.")
     with st.form(f"add_sector_stock_form_{selected_key}", clear_on_submit=True):
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
-            new_ticker = st.text_input("종목코드 (예: 005930, AAPL, 7203.T)")
+            new_name = st.text_input("종목명 (예: 삼성전자)")
         with col2:
-            new_name = st.text_input("종목명")
-        with col3:
             new_market = st.selectbox("시장", options=list(MARKET_LABELS.keys()), format_func=lambda k: MARKET_LABELS[k])
         add_submitted = st.form_submit_button("이 산업군에 추가")
         if add_submitted:
-            if not new_ticker.strip() or not new_name.strip():
-                st.error("종목코드와 종목명을 모두 입력해주세요.")
+            if not new_name.strip():
+                st.error("종목명을 입력해주세요.")
             else:
-                try:
-                    with st.spinner(f"{new_name} 시세/재무 데이터를 가져오는 중..."):
-                        n_rows = _add_stock_to_sector(selected_key, new_ticker.strip(), new_name.strip(), new_market)
-                    st.success(f"{new_name} ({new_ticker})를 추가했습니다 ({n_rows}일치 시세 확보).")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"추가하지 못했습니다: {e}")
+                with st.spinner(f"'{new_name}' 종목코드를 찾는 중..."):
+                    resolved_ticker = (
+                        resolve_kr_ticker(new_name.strip()) if new_market == "KR" else resolve_yf_ticker(new_name.strip())
+                    )
+                if not resolved_ticker:
+                    st.error(f"'{new_name}'의 종목코드를 찾지 못했습니다. 정확한 회사명으로 다시 시도해주세요.")
+                else:
+                    try:
+                        with st.spinner(f"{new_name} 시세/재무 데이터를 가져오는 중..."):
+                            n_rows = _add_stock_to_sector(selected_key, resolved_ticker, new_name.strip(), new_market)
+                        st.success(f"{new_name}를 추가했습니다 ({n_rows}일치 시세 확보).")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"추가하지 못했습니다: {e}")
 
     with get_conn() as conn:
         current_sector_stocks = get_sector_stocks(conn, selected_key)
@@ -143,7 +151,7 @@ with st.expander("종목 추가 / 삭제"):
         remove_target = st.selectbox(
             "삭제할 종목",
             options=["(선택 안 함)"] + [s["ticker"] for s in current_sector_stocks],
-            format_func=lambda t: t if t == "(선택 안 함)" else f"{t} ({next(s['name'] for s in current_sector_stocks if s['ticker'] == t)})",
+            format_func=lambda t: t if t == "(선택 안 함)" else next(s["name"] for s in current_sector_stocks if s["ticker"] == t),
         )
         if remove_target != "(선택 안 함)" and st.button("선택한 종목을 이 산업군에서 삭제"):
             with get_conn() as conn:
@@ -208,8 +216,12 @@ fallback_errors = []
 if market_code == "KR":
     # The batch collector may not have run yet (or its data is stale); when
     # the DB has nothing recent for a KR ticker, try a live pykrx fetch right
-    # now instead of just showing "N/A".
+    # now instead of just showing "N/A" -- and also splice that fetch's daily
+    # history into market_df_all, otherwise the chart below stays empty even
+    # though the summary row above now has a value (a live-fetched *point* isn't
+    # enough to draw a line; the chart needs the history rows too).
     today = datetime.date.today()
+    live_history_frames = []
 
     def _resolve_kr_row(row):
         db_date = row["date"]
@@ -218,8 +230,14 @@ if market_code == "KR":
             return pd.Series({"close": row["close"], "market_cap": row["market_cap"], "volume": row["volume"], "as_of": db_date})
         try:
             live = _live_kr_fallback(row["ticker"])
-            as_of = live["history"]["date"].iloc[-1] if not live["history"].empty else None
-            volume = live["history"]["volume"].iloc[-1] if not live["history"].empty else None
+            hist = live["history"]
+            as_of = hist["date"].iloc[-1] if not hist.empty else None
+            volume = hist["volume"].iloc[-1] if not hist.empty else None
+            if not hist.empty:
+                hist_for_chart = hist.copy()
+                hist_for_chart["ticker"] = row["ticker"]
+                hist_for_chart["name"] = row["name"]
+                live_history_frames.append(hist_for_chart)
             return pd.Series({"close": live["latest_price"], "market_cap": live["market_cap"], "volume": volume, "as_of": as_of})
         except Exception as e:
             fallback_errors.append(f"{row['name']} ({row['ticker']}): {e}")
@@ -228,6 +246,18 @@ if market_code == "KR":
     resolved = summary.apply(_resolve_kr_row, axis=1)
     summary[["close", "market_cap", "volume"]] = resolved[["close", "market_cap", "volume"]]
     summary["as_of"] = resolved["as_of"]
+
+    if live_history_frames:
+        # Don't duplicate rows for tickers that already have (fresh) DB data.
+        fallback_tickers = pd.concat(live_history_frames)["ticker"].unique()
+        market_df_all = pd.concat(
+            [market_df_all[~market_df_all["ticker"].isin(fallback_tickers)], *live_history_frames],
+            ignore_index=True,
+        )
+        st.caption(
+            f"일부 종목은 배치 수집 데이터가 없어 최근 {FALLBACK_DAYS}일치를 실시간으로 가져왔습니다 "
+            "(전체 10년 그래프를 보려면 `python -m app.collectors.run_collection`을 실행하세요)."
+        )
 else:
     summary["as_of"] = summary["date"]
 

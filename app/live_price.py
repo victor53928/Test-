@@ -60,14 +60,18 @@ def _get_kr_price_data(ticker: str, days: int) -> dict:
     volumes = [int(v) for v in ohlcv_df["거래량"]]
 
     market_cap = None
+    market_cap_by_date = {}
     try:
         cap_df = stock.get_market_cap_by_date(fromdate, todate, ticker)
         if not cap_df.empty:
             market_cap = float(cap_df["시가총액"].iloc[-1])
+            market_cap_by_date = {d.strftime("%Y-%m-%d"): float(v) for d, v in cap_df["시가총액"].items()}
     except Exception:
         pass  # market cap is a nice-to-have; price/volume above still work without it
 
-    return _summarize(dates, closes, volumes, "KRW", market_cap=market_cap)
+    result = _summarize(dates, closes, volumes, "KRW", market_cap=market_cap)
+    result["history"]["market_cap"] = result["history"]["date"].map(market_cap_by_date)
+    return result
 
 
 def _get_yf_price_data(ticker: str, days: int, currency: str) -> dict:

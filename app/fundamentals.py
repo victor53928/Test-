@@ -20,7 +20,7 @@ MAX_TREND_YEARS = 10
 
 
 def get_valuation(ticker: str, market: str) -> dict:
-    """Returns {"per": float|None, "pbr": float|None}."""
+    """Returns {"per": float|None, "pbr": float|None, "market_cap": float|None}."""
     if market in ("KOSPI", "KOSDAQ"):
         return _get_kr_valuation(ticker)
     return _get_yf_valuation(ticker)
@@ -33,20 +33,29 @@ def _get_kr_valuation(ticker: str) -> dict:
 
     df = stock.get_market_fundamental_by_date(fromdate, todate, ticker)
     if df.empty:
-        return {"per": None, "pbr": None}
+        return {"per": None, "pbr": None, "market_cap": None}
 
     latest = df.iloc[-1]
     per = float(latest["PER"]) if latest.get("PER") else None
     pbr = float(latest["PBR"]) if latest.get("PBR") else None
-    return {"per": per, "pbr": pbr}
+
+    market_cap = None
+    try:
+        cap_df = stock.get_market_cap_by_date(fromdate, todate, ticker)
+        if not cap_df.empty:
+            market_cap = float(cap_df["시가총액"].iloc[-1])
+    except Exception:
+        pass
+
+    return {"per": per, "pbr": pbr, "market_cap": market_cap}
 
 
 def _get_yf_valuation(ticker: str) -> dict:
     try:
         info = yf.Ticker(ticker).info
     except Exception:
-        return {"per": None, "pbr": None}
-    return {"per": info.get("trailingPE"), "pbr": info.get("priceToBook")}
+        return {"per": None, "pbr": None, "market_cap": None}
+    return {"per": info.get("trailingPE"), "pbr": info.get("priceToBook"), "market_cap": info.get("marketCap")}
 
 
 def get_financial_trend(ticker: str, market: str) -> list:
