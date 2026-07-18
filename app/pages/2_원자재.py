@@ -1,4 +1,6 @@
-"""Commodity prices (gold, silver, copper, WTI crude).
+"""Commodity prices (gold, silver, copper, WTI crude) -- one chart per commodity
+so each instrument's own price range is visible (mixing them on one shared
+axis flattens the smaller-scale ones).
 
 Run with: streamlit run app/dashboard.py (this page appears in the sidebar nav)
 """
@@ -22,10 +24,6 @@ st.title("원자재 가격")
 
 name_map = dict(COMMODITIES)
 
-period = st.radio(
-    "기간", options=list(PERIOD_OPTIONS.keys()), index=list(PERIOD_OPTIONS.keys()).index(DEFAULT_PERIOD), horizontal=True
-)
-
 with get_conn() as conn:
     commodities_df = pd.read_sql("SELECT * FROM commodity_prices ORDER BY date", conn)
 
@@ -47,6 +45,17 @@ display_df = pd.DataFrame(
 )
 st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-chart_df = filter_by_period(commodities_df, "date", period)
-st.subheader("가격 추이")
-st.line_chart(chart_df.pivot(index="date", columns="name", values="close"))
+charts_area = st.container()
+period = st.radio(
+    "기간", options=list(PERIOD_OPTIONS.keys()), index=list(PERIOD_OPTIONS.keys()).index(DEFAULT_PERIOD), horizontal=True
+)
+
+with charts_area:
+    st.subheader("가격 추이")
+    for symbol, name in COMMODITIES:
+        symbol_df = commodities_df[commodities_df["symbol"] == symbol]
+        symbol_df = filter_by_period(symbol_df, "date", period)
+        if symbol_df.empty:
+            continue
+        st.markdown(f"**{name}**")
+        st.line_chart(symbol_df.set_index("date")["close"])

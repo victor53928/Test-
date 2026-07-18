@@ -1,4 +1,6 @@
-"""Bond prices / yields (US 10Y, TLT, KR govt bond ETF), split by currency.
+"""Bond prices / yields (US 10Y, TLT, KR govt bond ETF), split by currency,
+one chart per bond so each instrument's own price/yield range is visible
+(mixing a % yield and a $ price on one shared axis flattens the yield).
 
 Run with: streamlit run app/dashboard.py (this page appears in the sidebar nav)
 """
@@ -35,10 +37,6 @@ def _format_bond_value(symbol: str, close) -> str:
     return format_money(close, currency, decimals=2)
 
 
-period = st.radio(
-    "기간", options=list(PERIOD_OPTIONS.keys()), index=list(PERIOD_OPTIONS.keys()).index(DEFAULT_PERIOD), horizontal=True
-)
-
 with get_conn() as conn:
     bonds_df = pd.read_sql("SELECT * FROM bond_prices ORDER BY date", conn)
 
@@ -67,5 +65,19 @@ for currency, (label, symbols) in CURRENCY_GROUPS.items():
     )
     st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-    group_df = filter_by_period(group_df_all, "date", period)
-    st.line_chart(group_df.pivot(index="date", columns="name", values="close"))
+    charts_area = st.container()
+    period = st.radio(
+        "기간",
+        options=list(PERIOD_OPTIONS.keys()),
+        index=list(PERIOD_OPTIONS.keys()).index(DEFAULT_PERIOD),
+        horizontal=True,
+        key=f"period_{currency}",
+    )
+    with charts_area:
+        for symbol, name in [(s, name_map[s]) for s in symbols]:
+            symbol_df = group_df_all[group_df_all["symbol"] == symbol]
+            symbol_df = filter_by_period(symbol_df, "date", period)
+            if symbol_df.empty:
+                continue
+            st.markdown(f"**{name}**")
+            st.line_chart(symbol_df.set_index("date")["close"])

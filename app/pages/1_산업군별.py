@@ -30,10 +30,21 @@ from app.db import (
     upsert_stock,
 )
 from app.formatting import CURRENCY_BY_MARKET, DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money
+from app.live_price import get_price_data
 from app.sectors import SECTORS
 
 LOOKBACK_DAYS = PERIOD_OPTIONS["10년"]
 MARKET_LABELS = {"KR": "🇰🇷 한국", "US": "🇺🇸 미국", "JP": "🇯🇵 일본"}
+STALE_DAYS = 5  # if the DB's latest row for a KR ticker is older than this, try a live pykrx fetch instead
+
+
+@st.cache_data(ttl=300)
+def _live_kr_fallback(ticker: str):
+    """Best-effort live pykrx fetch, used when the batch-collected market_data
+    table has no (or stale) data for a KR ticker. "KOSPI" here only routes to
+    the KR code path in live_price.get_price_data -- it works the same for
+    KOSDAQ tickers too, since pykrx itself doesn't need that distinction."""
+    return get_price_data(ticker, "KOSPI", days=14)
 
 st.set_page_config(page_title="산업군별 주식", layout="wide")
 st.title("산업군별 주식")
@@ -192,10 +203,39 @@ st.markdown(f"### {MARKET_LABELS[market_code]} ({currency})")
 # edge) -- computed from the unfiltered data, not the period-filtered chart data.
 latest_rows = market_df_all.sort_values("date").groupby("ticker").tail(1)
 summary = market_stocks[["ticker", "name"]].merge(latest_rows, on=["ticker", "name"], how="left")
+
+fallback_errors = []
+if market_code == "KR":
+    # The batch collector may not have run yet (or its data is stale); when
+    # the DB has nothing recent for a KR ticker, try a live pykrx fetch right
+    # now instead of just showing "N/A".
+    today = datetime.date.today()
+
+    def _resolve_kr_row(row):
+        db_date = row["date"]
+        is_stale = pd.isna(db_date) or (today - datetime.datetime.strptime(db_date, "%Y-%m-%d").date()).days > STALE_DAYS
+        if pd.notna(row["close"]) and not is_stale:
+            return pd.Series({"close": row["close"], "market_cap": row["market_cap"], "volume": row["volume"], "as_of": db_date})
+        try:
+            live = _live_kr_fallback(row["ticker"])
+            as_of = live["history"]["date"].iloc[-1] if not live["history"].empty else None
+            volume = live["history"]["volume"].iloc[-1] if not live["history"].empty else None
+            return pd.Series({"close": live["latest_price"], "market_cap": live["market_cap"], "volume": volume, "as_of": as_of})
+        except Exception as e:
+            fallback_errors.append(f"{row['name']} ({row['ticker']}): {e}")
+            return pd.Series({"close": None, "market_cap": None, "volume": None, "as_of": None})
+
+    resolved = summary.apply(_resolve_kr_row, axis=1)
+    summary[["close", "market_cap", "volume"]] = resolved[["close", "market_cap", "volume"]]
+    summary["as_of"] = resolved["as_of"]
+else:
+    summary["as_of"] = summary["date"]
+
 display_df = pd.DataFrame(
     {
         "종목명": summary["name"],
         "티커": summary["ticker"],
+        "기준일자": summary["as_of"].fillna("N/A"),
         "종가": summary["close"].map(lambda v: format_money(v, currency, decimals=2) if pd.notna(v) else "N/A"),
         "시가총액": summary["market_cap"].map(lambda v: format_money(v, currency) if pd.notna(v) else "N/A"),
         "거래량": summary["volume"].map(lambda v: f"{v:,.0f}" if pd.notna(v) else "N/A"),
@@ -203,6 +243,8 @@ display_df = pd.DataFrame(
 )
 if summary["close"].isna().all():
     st.caption("아직 시세 데이터가 없습니다. `python -m app.collectors.run_collection`을 실행하면 채워집니다.")
+for err in fallback_errors:
+    st.warning(f"실시간 시세 조회 실패: {err}")
 st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 company_options = market_stocks["name"].tolist()

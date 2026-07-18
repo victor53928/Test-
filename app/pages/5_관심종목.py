@@ -76,13 +76,6 @@ else:
 
     st.divider()
 
-period = st.radio(
-    "시세 그래프 기간",
-    options=list(PERIOD_OPTIONS.keys()),
-    index=list(PERIOD_OPTIONS.keys()).index(DEFAULT_PERIOD),
-    horizontal=True,
-)
-
 
 @st.cache_data(ttl=60)
 def _cached_price_data(ticker: str, market: str, days: int):
@@ -111,27 +104,39 @@ for entry in watchlist:
         with price_col:
             st.markdown("**시세**")
             try:
-                data = _cached_price_data(entry["ticker"], entry["market"], PERIOD_OPTIONS[period])
+                chart_area = st.container()
+                entry_period = st.radio(
+                    "기간",
+                    options=list(PERIOD_OPTIONS.keys()),
+                    index=list(PERIOD_OPTIONS.keys()).index(DEFAULT_PERIOD),
+                    horizontal=True,
+                    key=f"period_{entry['ticker']}",
+                )
+
+                data = _cached_price_data(entry["ticker"], entry["market"], PERIOD_OPTIONS[entry_period])
                 delta = f"{data['change_pct']:.2f}%" if data["change_pct"] is not None else None
                 history = data["history"]
                 latest_volume = history["volume"].iloc[-1] if not history.empty else None
+                as_of = history["date"].iloc[-1] if not history.empty else "N/A"
 
-                if entry["market"] in ("KOSPI", "KOSDAQ"):
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("종가", format_money(data["latest_price"], data["currency"]), delta=delta)
-                    m2.metric("시가총액", format_money(data["market_cap"], data["currency"]))
-                    m3.metric("거래량", f"{latest_volume:,.0f}" if latest_volume is not None else "N/A")
-                else:
-                    st.metric(
-                        f"현재가 ({data['currency']})",
-                        format_money(data["latest_price"], data["currency"], decimals=2),
-                        delta=delta,
-                    )
+                with chart_area:
+                    if entry["market"] in ("KOSPI", "KOSDAQ"):
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("종가", format_money(data["latest_price"], data["currency"]), delta=delta)
+                        m2.metric("시가총액", format_money(data["market_cap"], data["currency"]))
+                        m3.metric("거래량", f"{latest_volume:,.0f}" if latest_volume is not None else "N/A")
+                    else:
+                        st.metric(
+                            f"현재가 ({data['currency']})",
+                            format_money(data["latest_price"], data["currency"], decimals=2),
+                            delta=delta,
+                        )
+                    st.caption(f"기준일자: {as_of}")
 
-                price_history = history.set_index("date")
-                st.line_chart(price_history["close"])
-                st.caption("거래량")
-                st.bar_chart(price_history["volume"])
+                    price_history = history.set_index("date")
+                    st.line_chart(price_history["close"])
+                    st.caption("거래량")
+                    st.bar_chart(price_history["volume"])
             except Exception as e:
                 st.warning(f"시세를 불러오지 못했습니다: {e}")
 
