@@ -16,9 +16,11 @@ _CURRENCY_BY_MARKET = {"KOSPI": "KRW", "KOSDAQ": "KRW", "US": "USD"}
 
 
 def get_price_data(ticker: str, market: str, days: int = 90) -> dict:
-    """Returns {latest_price, prev_close, change, change_pct, currency, history}.
+    """Returns {latest_price, prev_close, change, change_pct, currency, market_cap, history}.
 
-    `history` is a DataFrame with date/close/volume columns.
+    `history` is a DataFrame with date/close/volume columns. `market_cap` is the
+    latest market cap (KR only for now; None for US since yfinance doesn't
+    expose historical market cap directly).
     """
     if market in ("KOSPI", "KOSDAQ"):
         return _get_kr_price_data(ticker, days)
@@ -27,7 +29,7 @@ def get_price_data(ticker: str, market: str, days: int = 90) -> dict:
     raise ValueError(f"unknown market: {market}")
 
 
-def _summarize(dates, closes, volumes, currency) -> dict:
+def _summarize(dates, closes, volumes, currency, market_cap=None) -> dict:
     history = pd.DataFrame({"date": dates, "close": closes, "volume": volumes})
     latest_price = closes[-1] if closes else None
     prev_close = closes[-2] if len(closes) >= 2 else None
@@ -39,6 +41,7 @@ def _summarize(dates, closes, volumes, currency) -> dict:
         "change": change,
         "change_pct": change_pct,
         "currency": currency,
+        "market_cap": market_cap,
         "history": history,
     }
 
@@ -55,7 +58,16 @@ def _get_kr_price_data(ticker: str, days: int) -> dict:
     dates = [d.strftime("%Y-%m-%d") for d in ohlcv_df.index]
     closes = [float(v) for v in ohlcv_df["종가"]]
     volumes = [int(v) for v in ohlcv_df["거래량"]]
-    return _summarize(dates, closes, volumes, "KRW")
+
+    market_cap = None
+    try:
+        cap_df = stock.get_market_cap_by_date(fromdate, todate, ticker)
+        if not cap_df.empty:
+            market_cap = float(cap_df["시가총액"].iloc[-1])
+    except Exception:
+        pass  # market cap is a nice-to-have; price/volume above still work without it
+
+    return _summarize(dates, closes, volumes, "KRW", market_cap=market_cap)
 
 
 def _get_us_price_data(ticker: str, days: int) -> dict:

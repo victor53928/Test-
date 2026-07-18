@@ -13,6 +13,7 @@ if str(_REPO_ROOT) not in sys.path:
 import streamlit as st
 
 from app.db import delete_watchlist, get_conn, get_watchlist, upsert_watchlist
+from app.formatting import format_money
 from app.live_price import get_price_data
 from app.news import fetch_news
 
@@ -74,12 +75,25 @@ for entry in watchlist:
             try:
                 data = _cached_price_data(entry["ticker"], entry["market"])
                 delta = f"{data['change_pct']:.2f}%" if data["change_pct"] is not None else None
-                st.metric(
-                    f"현재가 ({data['currency']})",
-                    f"{data['latest_price']:,.2f}" if data["latest_price"] is not None else "N/A",
-                    delta=delta,
-                )
-                st.line_chart(data["history"].set_index("date")["close"])
+                history = data["history"]
+                latest_volume = history["volume"].iloc[-1] if not history.empty else None
+
+                if entry["market"] in ("KOSPI", "KOSDAQ"):
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("종가", format_money(data["latest_price"], data["currency"]), delta=delta)
+                    m2.metric("시가총액", format_money(data["market_cap"], data["currency"]))
+                    m3.metric("거래량", f"{latest_volume:,.0f}" if latest_volume is not None else "N/A")
+                else:
+                    st.metric(
+                        f"현재가 ({data['currency']})",
+                        format_money(data["latest_price"], data["currency"], decimals=2),
+                        delta=delta,
+                    )
+
+                price_history = history.set_index("date")
+                st.line_chart(price_history["close"])
+                st.caption("거래량")
+                st.bar_chart(price_history["volume"])
             except Exception as e:
                 st.warning(f"시세를 불러오지 못했습니다: {e}")
 

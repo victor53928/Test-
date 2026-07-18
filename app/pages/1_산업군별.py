@@ -99,6 +99,8 @@ for market_code in ("KR", "US", "JP"):
     chart_df = market_df[market_df["ticker"].isin(market_tickers)]
     if not chart_df.empty:
         st.line_chart(chart_df.pivot(index="date", columns="name", values="market_cap"))
+        st.caption("거래량")
+        st.bar_chart(chart_df.pivot(index="date", columns="name", values="volume"))
 
     market_financials = financials_df[financials_df["ticker"].isin(market_tickers)]
     if not market_financials.empty:
