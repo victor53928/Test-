@@ -15,7 +15,7 @@ import streamlit as st
 
 from app.config import JPY_KRW_RATE, USD_KRW_RATE
 from app.db import delete_holding, get_conn, upsert_holding
-from app.formatting import format_money
+from app.formatting import format_money, right_aligned_table_html
 from app.portfolio import compute_rebalancing_plan, get_holdings_with_value, summarize_by_asset_class
 from app.sectors import BONDS, COMMODITIES, all_jp_tickers, all_kr_tickers, all_us_tickers
 
@@ -69,7 +69,21 @@ else:
         format_money(row.market_value, row.currency) for row in holdings_df.itertuples()
     ]
     display_holdings_df["market_value_krw"] = holdings_df["market_value_krw"].map(lambda v: format_money(v, "KRW"))
-    st.dataframe(display_holdings_df, use_container_width=True)
+    display_holdings_df = display_holdings_df.rename(
+        columns={
+            "ticker": "티커",
+            "quantity": "수량",
+            "asset_class": "자산군",
+            "currency": "통화",
+            "price": "현재가",
+            "market_value": "평가금액",
+            "market_value_krw": "평가금액(원화)",
+        }
+    )
+    st.markdown(
+        right_aligned_table_html(display_holdings_df, right_align_cols=["수량", "현재가", "평가금액", "평가금액(원화)"]),
+        unsafe_allow_html=True,
+    )
 
     delete_target = st.selectbox("삭제할 종목", options=["(선택 안 함)"] + [h["ticker"] for h in holdings])
     if delete_target != "(선택 안 함)" and st.button("선택한 종목 삭제"):
@@ -91,21 +105,27 @@ else:
     plan_df["asset_class"] = plan_df["asset_class"].map(ASSET_CLASS_LABELS)
     plan_df["current_weight"] = (plan_df["current_weight"] * 100).round(1)
     plan_df["target_weight"] = (plan_df["target_weight"] * 100).round(1)
+    plan_df["deviation_pp"] = plan_df["deviation_pp"].round(1)
     plan_df["current_value"] = plan_df["current_value"].map(lambda v: format_money(v, "KRW"))
     plan_df["action_amount"] = plan_df["action_amount"].map(lambda v: format_money(v, "KRW"))
-    st.dataframe(
-        plan_df.rename(
-            columns={
-                "asset_class": "자산군",
-                "current_value": "현재 평가금액",
-                "current_weight": "현재 비중(%)",
-                "target_weight": "목표 비중(%)",
-                "deviation_pp": "이탈(%p)",
-                "action_amount": "리밸런싱 필요 금액",
-                "needs_rebalance": "리밸런싱 필요",
-            }
+    plan_df["needs_rebalance"] = plan_df["needs_rebalance"].map({True: "예", False: "아니오"})
+    plan_display_df = plan_df.rename(
+        columns={
+            "asset_class": "자산군",
+            "current_value": "현재 평가금액",
+            "current_weight": "현재 비중(%)",
+            "target_weight": "목표 비중(%)",
+            "deviation_pp": "이탈(%p)",
+            "action_amount": "리밸런싱 필요 금액",
+            "needs_rebalance": "리밸런싱 필요",
+        }
+    )
+    st.markdown(
+        right_aligned_table_html(
+            plan_display_df,
+            right_align_cols=["현재 평가금액", "현재 비중(%)", "목표 비중(%)", "이탈(%p)", "리밸런싱 필요 금액"],
         ),
-        use_container_width=True,
+        unsafe_allow_html=True,
     )
 
     for p in plan:

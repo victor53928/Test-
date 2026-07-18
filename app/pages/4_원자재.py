@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from app.db import get_conn
-from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money
+from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money, right_aligned_table_html
 from app.sectors import COMMODITIES
 
 st.set_page_config(page_title="원자재", layout="wide")
@@ -43,7 +43,7 @@ display_df = pd.DataFrame(
         "가격 (USD)": latest_rows["close"].map(lambda v: format_money(v, "USD", decimals=2)),
     }
 )
-st.dataframe(display_df, use_container_width=True, hide_index=True)
+st.markdown(right_aligned_table_html(display_df, right_align_cols=["가격 (USD)"]), unsafe_allow_html=True)
 
 charts_area = st.container()
 period = st.radio(

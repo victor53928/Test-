@@ -1,6 +1,7 @@
 """Currency/number formatting and chart period helpers shared across pages."""
 
 import datetime
+import html
 
 CURRENCY_BY_MARKET = {"KR": "KRW", "US": "USD", "JP": "JPY"}
 CURRENCY_SYMBOLS = {"KRW": "₩", "USD": "$", "JPY": "¥"}
@@ -35,3 +36,41 @@ def filter_by_period(df, date_column: str, period_label: str):
         return df
     cutoff = (datetime.date.today() - datetime.timedelta(days=PERIOD_OPTIONS[period_label])).strftime("%Y-%m-%d")
     return df[df[date_column] >= cutoff]
+
+
+def right_aligned_table_html(df, right_align_cols=None) -> str:
+    """Returns an HTML <table> string (for st.markdown(..., unsafe_allow_html=True))
+    with the given columns right-aligned -- useful for comparing numbers at a
+    glance. st.dataframe left-aligns any string-formatted column (e.g. our
+    "₩1,234,567" values), and that isn't controllable via column_config once
+    a currency symbol/comma formatting is baked into the string, so a plain
+    HTML table is used instead for tables that are mostly about comparing
+    numbers. Defaults to right-aligning every column if `right_align_cols`
+    isn't given.
+    """
+    columns = list(df.columns)
+    right_align_cols = set(columns if right_align_cols is None else right_align_cols)
+
+    header_cells = "".join(
+        f"<th style='text-align:{'right' if col in right_align_cols else 'left'};"
+        f"padding:4px 12px;border-bottom:1px solid rgba(128,128,128,0.4);white-space:nowrap;'>"
+        f"{html.escape(str(col))}</th>"
+        for col in columns
+    )
+
+    body_rows = []
+    for _, row in df.iterrows():
+        cells = []
+        for col in columns:
+            align = "right" if col in right_align_cols else "left"
+            value = "" if row[col] is None else html.escape(str(row[col]))
+            cells.append(
+                f"<td style='text-align:{align};padding:4px 12px;"
+                f"border-bottom:1px solid rgba(128,128,128,0.15);white-space:nowrap;'>{value}</td>"
+            )
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+
+    return (
+        "<div style='overflow-x:auto;'><table style='width:100%;border-collapse:collapse;'>"
+        f"<thead><tr>{header_cells}</tr></thead><tbody>{''.join(body_rows)}</tbody></table></div>"
+    )

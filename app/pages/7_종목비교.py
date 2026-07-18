@@ -15,7 +15,7 @@ if str(_REPO_ROOT) not in sys.path:
 import pandas as pd
 import streamlit as st
 
-from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, format_money
+from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, format_money, right_aligned_table_html
 from app.fundamentals import get_financial_trend, get_valuation
 from app.live_price import get_price_data
 from app.ticker_lookup import DartApiKeyMissing, resolve_kr_ticker, resolve_yf_ticker
@@ -244,4 +244,8 @@ for item in compare_list:
         table[item["name"]] = ["불러오기 실패"] * len(metric_rows)
         st.warning(f"{item['name']} 지표를 불러오지 못했습니다: {e}")
 
-st.dataframe(pd.DataFrame(table), use_container_width=True, hide_index=True)
+table_df = pd.DataFrame(table)
+st.markdown(
+    right_aligned_table_html(table_df, right_align_cols=[item["name"] for item in compare_list]),
+    unsafe_allow_html=True,
+)

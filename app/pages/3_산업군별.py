@@ -31,7 +31,14 @@ from app.db import (
     upsert_sector_stock,
     upsert_stock,
 )
-from app.formatting import CURRENCY_BY_MARKET, DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money
+from app.formatting import (
+    CURRENCY_BY_MARKET,
+    DEFAULT_PERIOD,
+    PERIOD_OPTIONS,
+    filter_by_period,
+    format_money,
+    right_aligned_table_html,
+)
 from app.live_price import get_price_data
 from app.sectors import SECTORS
 from app.ticker_lookup import DartApiKeyMissing, resolve_kr_ticker, resolve_yf_ticker
@@ -271,7 +278,10 @@ else:
         st.caption("아직 시세 데이터가 없습니다. `python -m app.collectors.run_collection`을 실행하면 채워집니다.")
     for err in fallback_errors:
         st.warning(f"실시간 시세 조회 실패: {err}")
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.markdown(
+        right_aligned_table_html(display_df, right_align_cols=["기준일자", "종가", "시가총액", "거래량"]),
+        unsafe_allow_html=True,
+    )
 
     company_options = market_stocks["name"].tolist()
     selected_companies = st.multiselect(
@@ -311,12 +321,20 @@ else:
 
     market_financials = financials_df[financials_df["ticker"].isin(market_tickers)]
     if not market_financials.empty:
-        fin_display = market_financials.copy()
-        fin_display["name"] = fin_display["ticker"].map(name_map)
-        fin_display["revenue"] = fin_display["revenue"].map(lambda v: format_money(v, currency))
-        fin_display["operating_income"] = fin_display["operating_income"].map(lambda v: format_money(v, currency))
+        fin_display = pd.DataFrame(
+            {
+                "종목명": market_financials["ticker"].map(name_map),
+                "연도": market_financials["year"],
+                "분기": market_financials["quarter"],
+                "매출": market_financials["revenue"].map(lambda v: format_money(v, currency)),
+                "영업이익": market_financials["operating_income"].map(lambda v: format_money(v, currency)),
+            }
+        )
         with st.expander(f"{MARKET_LABELS[market_code]} 매출 / 영업이익"):
-            st.dataframe(fin_display, use_container_width=True, hide_index=True)
+            st.markdown(
+                right_aligned_table_html(fin_display, right_align_cols=["연도", "분기", "매출", "영업이익"]),
+                unsafe_allow_html=True,
+            )
 
 st.divider()
 st.subheader("종목 추가 / 삭제")

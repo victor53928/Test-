@@ -18,7 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from app.db import get_conn
-from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money
+from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money, right_aligned_table_html
 from app.sectors import BONDS
 
 st.set_page_config(page_title="채권", layout="wide")
@@ -88,7 +88,7 @@ for currency, (label, symbols) in CURRENCY_GROUPS.items():
             "가격/금리": [_format_bond_value(row.symbol, row.close) for row in latest_rows.itertuples()],
         }
     )
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.markdown(right_aligned_table_html(display_df, right_align_cols=["가격/금리"]), unsafe_allow_html=True)
 
     charts_area = st.container()
     period = st.radio(
