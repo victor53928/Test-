@@ -14,6 +14,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -39,6 +40,34 @@ LOOKBACK_DAYS = PERIOD_OPTIONS["10년"]
 FALLBACK_DAYS = 30  # live-fetch window used when the batch-collected data is missing/stale
 MARKET_LABELS = {"KR": "🇰🇷 한국", "US": "🇺🇸 미국", "JP": "🇯🇵 일본"}
 STALE_DAYS = 5  # if the DB's latest row for a KR ticker is older than this, try a live pykrx fetch instead
+
+
+def _labeled_line_chart(df: pd.DataFrame, value_col: str, value_title: str, currency: str):
+    """Line chart with a formatted-value tooltip and a text label at the end
+    of each line showing its latest value, so numbers are visible on the
+    chart itself, not just in the table above it."""
+    df = df.copy()
+    df["label"] = df[value_col].map(lambda v: format_money(v, currency))
+
+    base = alt.Chart(df).encode(
+        x=alt.X("date:T", title="date"),
+        y=alt.Y(f"{value_col}:Q", title=value_title),
+        color=alt.Color("name:N", title="종목"),
+    )
+    line = base.mark_line().encode(
+        tooltip=[
+            alt.Tooltip("name:N", title="종목"),
+            alt.Tooltip("date:T", title="날짜"),
+            alt.Tooltip("label:N", title=value_title),
+        ]
+    )
+    last_points = df.sort_values("date").groupby("name").tail(1)
+    text = (
+        alt.Chart(last_points)
+        .mark_text(align="left", dx=6, fontSize=11)
+        .encode(x="date:T", y=f"{value_col}:Q", text="label:N", color=alt.Color("name:N", legend=None))
+    )
+    return (line + text).properties(height=380)
 
 
 @st.cache_data(ttl=300)
@@ -264,7 +293,10 @@ else:
         elif chart_df.empty:
             st.caption("표시할 데이터가 없습니다.")
         else:
-            st.line_chart(chart_df.pivot(index="date", columns="name", values="market_cap"))
+            st.altair_chart(
+                _labeled_line_chart(chart_df, "market_cap", f"시가총액 ({currency})", currency),
+                use_container_width=True,
+            )
             st.caption("거래량")
             st.bar_chart(chart_df.pivot(index="date", columns="name", values="volume"))
 
