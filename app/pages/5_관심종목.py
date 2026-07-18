@@ -1,5 +1,6 @@
 """Watchlist: latest price/chart, PER/PBR + revenue trend, and Naver News,
-added by company name only (no ticker code needed).
+added by company name only (no ticker code needed). The add form lives at
+the bottom of the page, below the existing entries.
 
 Run with: streamlit run app/dashboard.py (this page appears in the sidebar nav)
 """
@@ -19,7 +20,7 @@ from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, format_money
 from app.fundamentals import get_financial_trend, get_valuation
 from app.live_price import get_price_data
 from app.news import SOURCE_DOMAINS, fetch_news
-from app.ticker_lookup import resolve_kr_ticker, resolve_yf_ticker
+from app.ticker_lookup import DartApiKeyMissing, resolve_kr_ticker, resolve_yf_ticker
 
 MARKET_LABELS = {"KOSPI": "코스피", "KOSDAQ": "코스닥", "US": "미국", "JP": "일본"}
 CURRENCY_BY_MARKET = {"KOSPI": "KRW", "KOSDAQ": "KRW", "US": "USD", "JP": "JPY"}
@@ -27,41 +28,12 @@ CURRENCY_BY_MARKET = {"KOSPI": "KRW", "KOSDAQ": "KRW", "US": "USD", "JP": "JPY"}
 st.set_page_config(page_title="관심종목", layout="wide")
 st.title("관심종목 뉴스 & 시세")
 
-st.subheader("관심종목 추가")
-st.caption("종목명만 입력하면 종목코드를 자동으로 찾아서 등록합니다.")
-with st.form("add_watchlist_form", clear_on_submit=True):
-    col1, col2 = st.columns(2)
-    with col1:
-        name = st.text_input("종목명 (예: 삼성전자)")
-    with col2:
-        market = st.selectbox("시장", options=list(MARKET_LABELS.keys()), format_func=lambda k: MARKET_LABELS[k])
-    keyword = st.text_input("뉴스 검색 키워드 (선택)", help="비워두면 종목명으로 뉴스를 검색합니다.")
-    submitted = st.form_submit_button("추가")
-    if submitted:
-        if not name.strip():
-            st.error("종목명을 입력해주세요.")
-        else:
-            with st.spinner(f"'{name}' 종목코드를 찾는 중..."):
-                resolved_ticker = (
-                    resolve_kr_ticker(name.strip()) if market in ("KOSPI", "KOSDAQ") else resolve_yf_ticker(name.strip())
-                )
-            if not resolved_ticker:
-                st.error(f"'{name}'의 종목코드를 찾지 못했습니다. 정확한 회사명으로 다시 시도해주세요.")
-            else:
-                try:
-                    with get_conn() as conn:
-                        upsert_watchlist(conn, resolved_ticker, name.strip(), market, keyword.strip() or None)
-                    st.success(f"{name}를 추가했습니다.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"추가하지 못했습니다: {e}")
-
 with get_conn() as conn:
     watchlist = get_watchlist(conn)
 
 st.subheader("현재 관심종목")
 if not watchlist:
-    st.info("아직 등록된 관심종목이 없습니다. 위에서 추가해주세요.")
+    st.info("아직 등록된 관심종목이 없습니다. 이 페이지 맨 아래에서 추가해주세요.")
 else:
     st.dataframe(
         pd.DataFrame(watchlist)[["name", "market", "keyword"]].rename(
@@ -81,7 +53,7 @@ else:
             delete_watchlist(conn, delete_target)
         st.rerun()
 
-    st.divider()
+st.divider()
 
 
 @st.cache_data(ttl=60)
@@ -191,3 +163,41 @@ for entry in watchlist:
                     st.caption(f"{item['pubDate']} — {item['description']}")
         except Exception as e:
             st.warning(f"뉴스를 불러오지 못했습니다: {e}")
+
+st.divider()
+st.subheader("관심종목 추가")
+st.caption("종목명만 입력하면 종목코드를 자동으로 찾아서 등록합니다.")
+with st.form("add_watchlist_form", clear_on_submit=True):
+    col1, col2 = st.columns(2)
+    with col1:
+        name = st.text_input("종목명 (예: 삼성전자)")
+    with col2:
+        market = st.selectbox("시장", options=list(MARKET_LABELS.keys()), format_func=lambda k: MARKET_LABELS[k])
+    keyword = st.text_input("뉴스 검색 키워드 (선택)", help="비워두면 종목명으로 뉴스를 검색합니다.")
+    submitted = st.form_submit_button("추가")
+    if submitted:
+        if not name.strip():
+            st.error("종목명을 입력해주세요.")
+        else:
+            try:
+                with st.spinner(f"'{name}' 종목코드를 찾는 중..."):
+                    resolved_ticker = (
+                        resolve_kr_ticker(name.strip())
+                        if market in ("KOSPI", "KOSDAQ")
+                        else resolve_yf_ticker(name.strip())
+                    )
+            except DartApiKeyMissing as e:
+                st.error(str(e))
+                resolved_ticker = None
+            else:
+                if not resolved_ticker:
+                    st.error(f"'{name}'의 종목코드를 찾지 못했습니다. 정확한 회사명으로 다시 시도해주세요.")
+
+            if resolved_ticker:
+                try:
+                    with get_conn() as conn:
+                        upsert_watchlist(conn, resolved_ticker, name.strip(), market, keyword.strip() or None)
+                    st.success(f"{name}를 추가했습니다.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"추가하지 못했습니다: {e}")

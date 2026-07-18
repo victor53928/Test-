@@ -11,10 +11,19 @@ from app.collectors import dart_collector
 from app.config import DART_API_KEY
 
 
+class DartApiKeyMissing(RuntimeError):
+    pass
+
+
 def resolve_kr_ticker(name: str) -> str:
-    """Returns a stock code for `name` via DART's company list, or None."""
+    """Returns a stock code for `name` via DART's company list, or None if no
+    (unique) match is found. Raises DartApiKeyMissing if DART_API_KEY isn't
+    configured -- KR name lookup has no key-free fallback, unlike price data."""
     if not DART_API_KEY:
-        return None
+        raise DartApiKeyMissing(
+            "한국 종목명 검색에는 DART_API_KEY가 필요합니다. .env에 DART_API_KEY를 설정해주세요 "
+            "(무료, https://opendart.fss.or.kr 에서 발급)."
+        )
 
     name_map = dart_collector.get_corp_name_map()
     if name in name_map:
