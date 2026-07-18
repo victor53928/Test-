@@ -1,10 +1,11 @@
 """Valuation (Yahoo-Finance-style detail) and multi-year revenue/operating
 income trend for watchlist entries.
 
-KR data comes from pykrx (valuation) and DART (revenue/operating income, up
-to 10 years of annual reports, requires DART_API_KEY). US/JP data comes from
-yfinance; free-tier annual financials there typically only go back ~4 years,
-which is a data-source limitation, not a bug.
+KR data comes from Naver Finance (see app/naver_finance.py) for valuation,
+and DART (revenue/operating income, up to 10 years of annual reports,
+requires DART_API_KEY). US/JP data comes from yfinance; free-tier annual
+financials there typically only go back ~4 years, which is a data-source
+limitation, not a bug.
 """
 
 import datetime
@@ -12,8 +13,8 @@ import time
 
 import pandas as pd
 import yfinance as yf
-from pykrx import stock
 
+from app import naver_finance
 from app.collectors import dart_collector
 from app.config import DART_API_KEY
 
@@ -46,47 +47,32 @@ def get_valuation(ticker: str, market: str) -> dict:
 
 def _get_kr_valuation(ticker: str) -> dict:
     result = dict(_EMPTY_VALUATION)
-    today = datetime.date.today()
 
-    # PER/PBR/EPS/BPS/배당수익률/주당배당금 all come from one pykrx call.
+    # market_cap/per/pbr/eps/bps/dividend_yield/dps all come from one Naver
+    # Finance page fetch; each field is parsed independently within it, so a
+    # single unparseable field doesn't blank out the rest.
     try:
-        fromdate = (today - datetime.timedelta(days=14)).strftime("%Y%m%d")
-        todate = today.strftime("%Y%m%d")
-        df = stock.get_market_fundamental_by_date(fromdate, todate, ticker)
-        if not df.empty:
-            latest = df.iloc[-1]
-            result["per"] = float(latest["PER"]) if latest.get("PER") else None
-            result["pbr"] = float(latest["PBR"]) if latest.get("PBR") else None
-            result["eps"] = float(latest["EPS"]) if latest.get("EPS") else None
-            result["bps"] = float(latest["BPS"]) if latest.get("BPS") else None
-            result["dividend_yield"] = float(latest["DIV"]) if latest.get("DIV") else None
-            result["dps"] = float(latest["DPS"]) if latest.get("DPS") else None
-            if result["eps"] and result["bps"]:
-                result["roe"] = result["eps"] / result["bps"] * 100
+        summary = naver_finance.fetch_market_summary(ticker)
+        result["market_cap"] = summary.get("market_cap")
+        result["per"] = summary.get("per")
+        result["pbr"] = summary.get("pbr")
+        result["eps"] = summary.get("eps")
+        result["bps"] = summary.get("bps")
+        result["dividend_yield"] = summary.get("dividend_yield")
+        result["dps"] = summary.get("dps")
+        result["week52_high"] = summary.get("week52_high")
+        result["week52_low"] = summary.get("week52_low")
+        if result["eps"] and result["bps"]:
+            result["roe"] = result["eps"] / result["bps"] * 100
     except Exception:
         pass
 
-    # Market cap fetched independently -- must not depend on the fundamental
-    # call above succeeding (KR stocks without published PER/PBR, e.g. due to
-    # negative earnings, otherwise ended up with no market cap either).
+    # Average volume, from a separate 90-day daily-price pull.
     try:
-        fromdate14 = (today - datetime.timedelta(days=14)).strftime("%Y%m%d")
-        todate = today.strftime("%Y%m%d")
-        cap_df = stock.get_market_cap_by_date(fromdate14, todate, ticker)
-        if not cap_df.empty:
-            result["market_cap"] = float(cap_df["시가총액"].iloc[-1])
-    except Exception:
-        pass
-
-    # 52-week high/low + average volume, from a separate 1-year OHLCV pull.
-    try:
-        fromdate365 = (today - datetime.timedelta(days=365)).strftime("%Y%m%d")
-        todate = today.strftime("%Y%m%d")
-        ohlcv = stock.get_market_ohlcv_by_date(fromdate365, todate, ticker)
-        if not ohlcv.empty:
-            result["week52_high"] = float(ohlcv["고가"].max())
-            result["week52_low"] = float(ohlcv["저가"].min())
-            result["avg_volume"] = float(ohlcv["거래량"].mean())
+        rows = naver_finance.fetch_daily_ohlcv(ticker, days=90)
+        if rows:
+            volumes = [r[2] for r in rows]
+            result["avg_volume"] = sum(volumes) / len(volumes)
     except Exception:
         pass
 

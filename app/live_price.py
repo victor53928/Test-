@@ -1,16 +1,15 @@
 """Latest price + recent history for watchlist entries.
 
-KR tickers (KOSPI/KOSDAQ) go through pykrx; US/JP tickers go through yfinance.
-"Latest" here means the most recent close/quote available from these
-providers (refreshed on whatever cache TTL the caller uses), not a
-tick-by-tick real-time feed.
+KR tickers (KOSPI/KOSDAQ) go through Naver Finance (see app/naver_finance.py);
+US/JP tickers go through yfinance. "Latest" here means the most recent
+close/quote available from these providers (refreshed on whatever cache TTL
+the caller uses), not a tick-by-tick real-time feed.
 """
-
-import datetime
 
 import pandas as pd
 import yfinance as yf
-from pykrx import stock
+
+from app import naver_finance
 
 _CURRENCY_BY_MARKET = {"KOSPI": "KRW", "KOSDAQ": "KRW", "US": "USD", "JP": "JPY"}
 
@@ -47,30 +46,29 @@ def _summarize(dates, closes, volumes, currency, market_cap=None) -> dict:
 
 
 def _get_kr_price_data(ticker: str, days: int) -> dict:
-    today = datetime.date.today()
-    fromdate = (today - datetime.timedelta(days=days)).strftime("%Y%m%d")
-    todate = today.strftime("%Y%m%d")
-
-    ohlcv_df = stock.get_market_ohlcv_by_date(fromdate, todate, ticker)
-    if ohlcv_df.empty:
+    rows = naver_finance.fetch_daily_ohlcv(ticker, days)
+    if not rows:
         raise ValueError(f"{ticker}: 조회된 시세 데이터가 없습니다.")
 
-    dates = [d.strftime("%Y-%m-%d") for d in ohlcv_df.index]
-    closes = [float(v) for v in ohlcv_df["종가"]]
-    volumes = [int(v) for v in ohlcv_df["거래량"]]
+    dates = [r[0] for r in rows]
+    closes = [r[1] for r in rows]
+    volumes = [r[2] for r in rows]
 
-    market_cap = None
-    market_cap_by_date = {}
+    summary = {}
     try:
-        cap_df = stock.get_market_cap_by_date(fromdate, todate, ticker)
-        if not cap_df.empty:
-            market_cap = float(cap_df["시가총액"].iloc[-1])
-            market_cap_by_date = {d.strftime("%Y-%m-%d"): float(v) for d, v in cap_df["시가총액"].items()}
+        summary = naver_finance.fetch_market_summary(ticker)
     except Exception:
         pass  # market cap is a nice-to-have; price/volume above still work without it
 
-    result = _summarize(dates, closes, volumes, "KRW", market_cap=market_cap)
-    result["history"]["market_cap"] = result["history"]["date"].map(market_cap_by_date)
+    result = _summarize(dates, closes, volumes, "KRW", market_cap=summary.get("market_cap"))
+
+    # Naver doesn't publish historical daily market cap; approximate it as
+    # close * shares-outstanding (same approach used for US/JP below),
+    # assuming shares outstanding is roughly constant over the window.
+    shares = summary.get("shares_outstanding")
+    if shares:
+        result["history"]["market_cap"] = result["history"]["close"] * shares
+
     return result
 
 

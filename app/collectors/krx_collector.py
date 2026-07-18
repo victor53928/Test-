@@ -1,37 +1,36 @@
-"""Collects market cap, close price and trading volume for KR-listed stocks via pykrx."""
+"""Collects market cap, close price and trading volume for KR-listed stocks
+via Naver Finance (see app/naver_finance.py), used instead of pykrx/KRX."""
 
-from pykrx import stock
+import datetime
+
+from app import naver_finance
 
 
 def fetch_market_data(ticker: str, fromdate: str, todate: str):
     """Returns a list of (date, close, market_cap, volume) tuples for one ticker.
 
-    fromdate/todate must be 'YYYYMMDD' strings. Close/volume (from
-    get_market_ohlcv_by_date) and market cap (from get_market_cap_by_date)
-    are fetched independently: if the market-cap call fails or comes back
-    empty for a given day, that day's close/volume is still kept (with
-    market_cap=None) instead of the whole ticker being dropped.
+    fromdate/todate are 'YYYYMMDD' strings; only their span (todate - fromdate)
+    is used, since Naver's daily-price endpoint is queried by day count.
+    Close/volume and market cap are fetched independently: if the market-cap
+    lookup fails, that day's close/volume is still kept (with market_cap
+    approximated from shares outstanding, or None) instead of the whole
+    ticker being dropped.
     """
-    ohlcv_df = stock.get_market_ohlcv_by_date(fromdate, todate, ticker)
-    if ohlcv_df.empty:
+    days = (
+        datetime.datetime.strptime(todate, "%Y%m%d") - datetime.datetime.strptime(fromdate, "%Y%m%d")
+    ).days + 1
+    rows = naver_finance.fetch_daily_ohlcv(ticker, days)
+    if not rows:
         return []
 
-    cap_by_date = {}
+    shares = None
     try:
-        cap_df = stock.get_market_cap_by_date(fromdate, todate, ticker)
-        cap_by_date = {date: float(row["시가총액"]) for date, row in cap_df.iterrows()}
+        summary = naver_finance.fetch_market_summary(ticker)
+        shares = summary.get("shares_outstanding")
     except Exception:
         pass  # market cap is a nice-to-have; close/volume below still work without it
 
-    rows = []
-    for date, ohlcv_row in ohlcv_df.iterrows():
-        date_str = date.strftime("%Y-%m-%d")
-        rows.append(
-            (
-                date_str,
-                float(ohlcv_row["종가"]),
-                cap_by_date.get(date),
-                int(ohlcv_row["거래량"]),
-            )
-        )
-    return rows
+    return [
+        (date_str, close, (close * shares) if shares else None, volume)
+        for date_str, close, volume in rows
+    ]

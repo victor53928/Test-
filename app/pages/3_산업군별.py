@@ -39,7 +39,7 @@ from app.ticker_lookup import DartApiKeyMissing, resolve_kr_ticker, resolve_yf_t
 LOOKBACK_DAYS = PERIOD_OPTIONS["10년"]
 FALLBACK_DAYS = 30  # live-fetch window used when the batch-collected data is missing/stale
 MARKET_LABELS = {"KR": "🇰🇷 한국", "US": "🇺🇸 미국", "JP": "🇯🇵 일본"}
-STALE_DAYS = 5  # if the DB's latest row for a KR ticker is older than this, try a live pykrx fetch instead
+STALE_DAYS = 5  # if the DB's latest row for a KR ticker is older than this, try a live Naver Finance fetch instead
 
 
 def _labeled_line_chart(df: pd.DataFrame, value_col: str, value_title: str, currency: str):
@@ -72,10 +72,11 @@ def _labeled_line_chart(df: pd.DataFrame, value_col: str, value_title: str, curr
 
 @st.cache_data(ttl=300)
 def _live_kr_fallback(ticker: str):
-    """Best-effort live pykrx fetch, used when the batch-collected market_data
-    table has no (or stale) data for a KR ticker. "KOSPI" here only routes to
-    the KR code path in live_price.get_price_data -- it works the same for
-    KOSDAQ tickers too, since pykrx itself doesn't need that distinction."""
+    """Best-effort live Naver Finance fetch, used when the batch-collected
+    market_data table has no (or stale) data for a KR ticker. "KOSPI" here
+    only routes to the KR code path in live_price.get_price_data -- it works
+    the same for KOSDAQ tickers too, since the ticker alone determines the
+    right Naver Finance page regardless of which KR market it's listed on."""
     return get_price_data(ticker, "KOSPI", days=FALLBACK_DAYS)
 
 
@@ -204,8 +205,8 @@ else:
     fallback_errors = []
     if market_code == "KR":
         # The batch collector may not have run yet (or its data is stale); when
-        # the DB has nothing recent for a KR ticker, try a live pykrx fetch right
-        # now instead of just showing "N/A" -- and also splice that fetch's daily
+        # the DB has nothing recent for a KR ticker, try a live Naver Finance fetch
+        # right now instead of just showing "N/A" -- and also splice that fetch's daily
         # history into market_df_all, otherwise the chart below stays empty even
         # though the summary row above now has a value (a live-fetched *point*
         # isn't enough to draw a line; the chart needs the history rows too).
