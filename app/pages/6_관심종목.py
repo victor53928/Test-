@@ -1,6 +1,6 @@
-"""Watchlist: latest price/chart, PER/PBR + revenue trend, and Naver News,
-added by company name only (no ticker code needed). The add form lives at
-the bottom of the page, below the existing entries.
+"""Watchlist: click a compact stock block (grouped 한국/미국/일본) to see its
+price/chart, PER/PBR + revenue trend, and Naver News. Added by company name
+only (no ticker code needed). The add form lives at the bottom of the page.
 
 Run with: streamlit run app/dashboard.py (this page appears in the sidebar nav)
 """
@@ -24,6 +24,12 @@ from app.ticker_lookup import DartApiKeyMissing, resolve_kr_ticker, resolve_yf_t
 
 MARKET_LABELS = {"KOSPI": "코스피", "KOSDAQ": "코스닥", "US": "미국", "JP": "일본"}
 CURRENCY_BY_MARKET = {"KOSPI": "KRW", "KOSDAQ": "KRW", "US": "USD", "JP": "JPY"}
+GROUPS = [
+    ("🇰🇷 한국 주식", ("KOSPI", "KOSDAQ")),
+    ("🇺🇸 미국 주식", ("US",)),
+    ("🇯🇵 일본 주식", ("JP",)),
+]
+BLOCKS_PER_ROW = 6
 
 st.set_page_config(page_title="관심종목", layout="wide")
 st.title("관심종목 뉴스 & 시세")
@@ -31,55 +37,66 @@ st.title("관심종목 뉴스 & 시세")
 with get_conn() as conn:
     watchlist = get_watchlist(conn)
 
-st.subheader("현재 관심종목")
 if not watchlist:
     st.info("아직 등록된 관심종목이 없습니다. 이 페이지 맨 아래에서 추가해주세요.")
 else:
-    st.dataframe(
-        pd.DataFrame(watchlist)[["name", "market", "keyword"]].rename(
-            columns={"name": "종목명", "market": "시장", "keyword": "뉴스 키워드"}
-        ),
-        use_container_width=True,
-        hide_index=True,
+    if st.session_state.get("selected_watchlist_ticker") not in [w["ticker"] for w in watchlist]:
+        st.session_state["selected_watchlist_ticker"] = watchlist[0]["ticker"]
+
+    for group_label, group_markets in GROUPS:
+        group_entries = [w for w in watchlist if w["market"] in group_markets]
+        if not group_entries:
+            continue
+        st.markdown(f"**{group_label}**")
+        for row_start in range(0, len(group_entries), BLOCKS_PER_ROW):
+            row_entries = group_entries[row_start : row_start + BLOCKS_PER_ROW]
+            cols = st.columns(BLOCKS_PER_ROW)
+            for col, entry in zip(cols, row_entries):
+                with col:
+                    is_selected = st.session_state["selected_watchlist_ticker"] == entry["ticker"]
+                    if st.button(
+                        entry["name"],
+                        key=f"wl_btn_{entry['ticker']}",
+                        use_container_width=True,
+                        type="primary" if is_selected else "secondary",
+                    ):
+                        st.session_state["selected_watchlist_ticker"] = entry["ticker"]
+                        st.rerun()
+
+    st.divider()
+
+    selected_entry = next(
+        (w for w in watchlist if w["ticker"] == st.session_state["selected_watchlist_ticker"]), None
     )
 
-    delete_target = st.selectbox(
-        "삭제할 종목",
-        options=["(선택 안 함)"] + [w["ticker"] for w in watchlist],
-        format_func=lambda t: t if t == "(선택 안 함)" else next(w["name"] for w in watchlist if w["ticker"] == t),
-    )
-    if delete_target != "(선택 안 함)" and st.button("선택한 종목 삭제"):
-        with get_conn() as conn:
-            delete_watchlist(conn, delete_target)
-        st.rerun()
+    @st.cache_data(ttl=60)
+    def _cached_price_data(ticker: str, market: str, days: int):
+        return get_price_data(ticker, market, days=days)
 
-st.divider()
+    @st.cache_data(ttl=3600)
+    def _cached_valuation(ticker: str, market: str):
+        return get_valuation(ticker, market)
 
+    @st.cache_data(ttl=86400)
+    def _cached_trend(ticker: str, market: str):
+        return get_financial_trend(ticker, market)
 
-@st.cache_data(ttl=60)
-def _cached_price_data(ticker: str, market: str, days: int):
-    return get_price_data(ticker, market, days=days)
+    @st.cache_data(ttl=300)
+    def _cached_news(keyword: str, filtered: bool):
+        if filtered:
+            return fetch_news(keyword, source_domains=list(SOURCE_DOMAINS.values()))
+        return fetch_news(keyword)
 
+    if selected_entry:
+        entry = selected_entry
+        title_col, delete_col = st.columns([5, 1])
+        title_col.subheader(entry["name"])
+        if delete_col.button("삭제", key=f"delete_{entry['ticker']}"):
+            with get_conn() as conn:
+                delete_watchlist(conn, entry["ticker"])
+            del st.session_state["selected_watchlist_ticker"]
+            st.rerun()
 
-@st.cache_data(ttl=3600)
-def _cached_valuation(ticker: str, market: str):
-    return get_valuation(ticker, market)
-
-
-@st.cache_data(ttl=86400)
-def _cached_trend(ticker: str, market: str):
-    return get_financial_trend(ticker, market)
-
-
-@st.cache_data(ttl=300)
-def _cached_news(keyword: str, filtered: bool):
-    if filtered:
-        return fetch_news(keyword, source_domains=list(SOURCE_DOMAINS.values()))
-    return fetch_news(keyword)
-
-
-for entry in watchlist:
-    with st.expander(entry["name"], expanded=True):
         st.markdown("**시세**")
         try:
             chart_area = st.container()
@@ -111,7 +128,6 @@ for entry in watchlist:
                     )
                 st.caption(f"기준일자: {as_of}")
 
-                # Full-width chart (this page is no longer split into side-by-side columns).
                 price_history = history.set_index("date")
                 st.line_chart(price_history["close"], height=350)
                 st.caption("거래량")
