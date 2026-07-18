@@ -99,4 +99,14 @@ def _get_yf_price_data(ticker: str, days: int, currency: str) -> dict:
     except Exception:
         pass  # fall back to history-derived values already in `result`
 
+    # Approximate per-day market cap as close * current shares outstanding,
+    # same approach app/collectors/us_collector.py uses for batch collection
+    # (yfinance doesn't expose historical market cap directly).
+    try:
+        shares = t.fast_info.get("shares")
+        if shares:
+            result["history"]["market_cap"] = result["history"]["close"] * shares
+    except Exception:
+        pass
+
     return result

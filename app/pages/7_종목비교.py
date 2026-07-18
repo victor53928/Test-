@@ -1,6 +1,6 @@
 """Stock comparison: pick up to 5 stocks (any market, mixed OK) and compare
-normalized price performance (% change from the period start) on one chart,
-plus a side-by-side valuation metrics table.
+price change, market cap change, volume, trading value, revenue/operating
+income, and a side-by-side valuation metrics table.
 
 Run with: streamlit run app/dashboard.py (this page appears in the sidebar nav)
 """
@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, format_money
-from app.fundamentals import get_valuation
+from app.fundamentals import get_financial_trend, get_valuation
 from app.live_price import get_price_data
 from app.ticker_lookup import DartApiKeyMissing, resolve_kr_ticker, resolve_yf_ticker
 
@@ -26,7 +26,7 @@ MAX_COMPARE = 5
 
 st.set_page_config(page_title="종목 비교", layout="wide")
 st.title("종목 비교")
-st.caption(f"최대 {MAX_COMPARE}개 종목을 골라 가격 변화율과 주요 지표를 나란히 비교합니다.")
+st.caption(f"최대 {MAX_COMPARE}개 종목을 골라 가격/시가총액/거래량/거래금액/실적/주요 지표를 나란히 비교합니다.")
 
 if "compare_list" not in st.session_state:
     st.session_state["compare_list"] = []
@@ -99,10 +99,14 @@ def _cached_valuation(ticker: str, market: str):
     return get_valuation(ticker, market)
 
 
-st.subheader("가격 변화율 비교")
-st.caption("각 종목의 기간 시작일 종가를 0%로 놓고 변화율을 비교합니다 (통화가 달라도 비교 가능).")
+@st.cache_data(ttl=86400)
+def _cached_trend(ticker: str, market: str):
+    return get_financial_trend(ticker, market)
 
-frames = []
+
+# Fetch each stock's price history once and reuse it for every chart below
+# (price %, market cap %, volume, trading value) instead of re-fetching per section.
+histories = {}
 price_errors = []
 for item in compare_list:
     try:
@@ -110,21 +114,93 @@ for item in compare_list:
         hist = data["history"].copy()
         if hist.empty:
             raise ValueError("가격 데이터가 없습니다.")
-        base = hist["close"].iloc[0]
-        hist["변화율(%)"] = (hist["close"] / base - 1) * 100
-        hist["종목"] = item["name"]
-        frames.append(hist[["date", "변화율(%)", "종목"]])
+        hist["trading_value"] = hist["close"] * hist["volume"]
+        histories[item["ticker"]] = hist
     except Exception as e:
         price_errors.append(f"{item['name']}: {e}")
 
 for err in price_errors:
     st.warning(f"가격 데이터를 불러오지 못했습니다: {err}")
 
-if frames:
+
+def _normalized_chart(field: str, title: str, note: str):
+    st.subheader(title)
+    st.caption(note)
+    frames = []
+    for item in compare_list:
+        hist = histories.get(item["ticker"])
+        if hist is None or field not in hist or hist[field].dropna().empty:
+            continue
+        series = hist[["date", field]].dropna().copy()
+        base = series[field].iloc[0]
+        if not base:
+            continue
+        series["변화율(%)"] = (series[field] / base - 1) * 100
+        series["종목"] = item["name"]
+        frames.append(series[["date", "변화율(%)", "종목"]])
+    if not frames:
+        st.caption("표시할 데이터가 없습니다.")
+        return
     combined = pd.concat(frames, ignore_index=True)
     st.line_chart(combined.pivot(index="date", columns="종목", values="변화율(%)"))
-else:
-    st.caption("표시할 가격 데이터가 없습니다.")
+
+
+def _raw_chart(field: str, title: str, chart_fn):
+    st.subheader(title)
+    frames = []
+    for item in compare_list:
+        hist = histories.get(item["ticker"])
+        if hist is None or field not in hist or hist[field].dropna().empty:
+            continue
+        series = hist[["date", field]].dropna().copy()
+        series["종목"] = item["name"]
+        frames.append(series[["date", field, "종목"]])
+    if not frames:
+        st.caption("표시할 데이터가 없습니다.")
+        return
+    combined = pd.concat(frames, ignore_index=True)
+    chart_fn(combined.pivot(index="date", columns="종목", values=field))
+
+
+_normalized_chart("close", "가격 변화율 비교", "기간 시작일 종가를 0%로 놓고 비교합니다 (통화가 달라도 비교 가능).")
+_normalized_chart(
+    "market_cap",
+    "시가총액 변화율 비교",
+    "기간 시작일 시가총액을 0%로 놓고 비교합니다 (미국/일본은 발행주식수가 일정하다고 가정한 근사치).",
+)
+_raw_chart("volume", "거래량 비교", st.bar_chart)
+_raw_chart("trading_value", "거래대금 비교 (종가 × 거래량 근사치)", st.bar_chart)
+
+st.subheader("매출액 / 영업이익 비교")
+st.caption(
+    "연도별 실적입니다. 통화가 종목마다 다를 수 있습니다 (한국 원화, 미국·일본은 각 통화) — "
+    "절대 규모가 아니라 성장 추세 비교용으로 참고해주세요."
+)
+revenue_frames, op_income_frames = [], []
+for item in compare_list:
+    trend = _cached_trend(item["ticker"], item["market"])
+    if not trend:
+        continue
+    trend_df = pd.DataFrame(trend)
+    trend_df["종목"] = item["name"]
+    revenue_frames.append(trend_df[["year", "revenue", "종목"]].dropna(subset=["revenue"]))
+    op_income_frames.append(trend_df[["year", "operating_income", "종목"]].dropna(subset=["operating_income"]))
+
+col_rev, col_op = st.columns(2)
+with col_rev:
+    st.markdown("**매출액**")
+    if revenue_frames:
+        combined = pd.concat(revenue_frames, ignore_index=True)
+        st.bar_chart(combined.pivot(index="year", columns="종목", values="revenue"))
+    else:
+        st.caption("매출액 데이터가 없습니다 (한국 종목은 .env의 DART_API_KEY가 필요합니다).")
+with col_op:
+    st.markdown("**영업이익**")
+    if op_income_frames:
+        combined = pd.concat(op_income_frames, ignore_index=True)
+        st.bar_chart(combined.pivot(index="year", columns="종목", values="operating_income"))
+    else:
+        st.caption("영업이익 데이터가 없습니다 (한국 종목은 .env의 DART_API_KEY가 필요합니다).")
 
 st.subheader("주요 지표 비교")
 
