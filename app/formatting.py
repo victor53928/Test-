@@ -5,6 +5,9 @@ import html
 
 CURRENCY_BY_MARKET = {"KR": "KRW", "US": "USD", "JP": "JPY"}
 CURRENCY_SYMBOLS = {"KRW": "₩", "USD": "$", "JPY": "¥"}
+# Trailing unit word for format_money_korean -- "원" attaches directly (37조원),
+# while "달러"/"엔" read more naturally with a leading space (260억 달러).
+CURRENCY_KOREAN_UNIT_WORD = {"KRW": "원", "USD": " 달러", "JPY": " 엔"}
 
 # label -> lookback in days, used to filter an already-loaded history down to
 # the selected window (data itself is collected up to PERIOD_OPTIONS's max).
@@ -26,6 +29,35 @@ def format_money(value, currency: str, decimals: int = 0) -> str:
         return "N/A"
     symbol = CURRENCY_SYMBOLS.get(currency, "")
     return f"{symbol}{value:,.{decimals}f}"
+
+
+def format_money_korean(value, currency: str) -> str:
+    """e.g. format_money_korean(37_100_000_000_000, "KRW") -> '37조 1,000억원'
+    format_money_korean(26_000_000_000, "USD") -> '260억 달러'
+
+    Korean convention groups large numbers by 조(10^12)/억(10^8) rather than
+    thousands, so a plain comma-separated format_money() value like
+    '₩37,100,000,000,000' is hard to read at a glance -- this reads it out in
+    조/억 units instead. Falls back to format_money() under 1억, where 조/억
+    grouping wouldn't apply anyway.
+    """
+    if value is None:
+        return "N/A"
+    if abs(value) < 10**8:
+        return format_money(value, currency)
+
+    unit_word = CURRENCY_KOREAN_UNIT_WORD.get(currency, "")
+    sign = "-" if value < 0 else ""
+    remaining = round(abs(value))
+    jo, remaining = divmod(remaining, 10**12)
+    eok = remaining // 10**8
+
+    parts = []
+    if jo:
+        parts.append(f"{jo:,}조")
+    if eok:
+        parts.append(f"{eok:,}억")
+    return f"{sign}{' '.join(parts)}{unit_word}"
 
 
 def filter_by_period(df, date_column: str, period_label: str):

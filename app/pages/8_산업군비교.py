@@ -19,7 +19,13 @@ import pandas as pd
 import streamlit as st
 
 from app.db import get_all_sector_stocks, get_conn, seed_sector_stocks_if_empty
-from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money, right_aligned_table_html
+from app.formatting import (
+    DEFAULT_PERIOD,
+    PERIOD_OPTIONS,
+    filter_by_period,
+    format_money_korean,
+    right_aligned_table_html,
+)
 from app.live_price import get_price_data
 from app.portfolio import to_krw
 from app.sectors import SECTORS
@@ -97,9 +103,12 @@ with st.spinner(f"{len(all_stocks)}개 종목의 시세를 불러오는 중...")
         ticker_hist = ticker_hist.dropna(subset=["close", "volume"])
         if ticker_hist.empty:
             continue
-        ticker_hist["trading_value_krw"] = [
-            to_krw(close * volume, currency) for close, volume in zip(ticker_hist["close"], ticker_hist["volume"])
-        ]
+        # Keep both: native-currency value (used when a single market is
+        # selected, so 한국=원화/미국=달러/일본=엔화 stays in its own currency)
+        # and a KRW-converted value (used only for the "전체" combined view,
+        # where currencies must share one unit to be comparable at all).
+        ticker_hist["trading_value_native"] = ticker_hist["close"] * ticker_hist["volume"]
+        ticker_hist["trading_value_krw"] = to_krw(ticker_hist["trading_value_native"], currency)
         ticker_hist["sector_key"] = sector_key
         ticker_hist["market"] = market
         history_frames.append(ticker_hist)
@@ -111,7 +120,8 @@ with st.spinner(f"{len(all_stocks)}개 종목의 시세를 불러오는 중...")
                 "종목명": name,
                 "시장": market,
                 "기준일자": latest_row["date"],
-                "거래대금": latest_row["trading_value_krw"],
+                "거래대금_현지": latest_row["trading_value_native"],
+                "거래대금_원화": latest_row["trading_value_krw"],
             }
         )
 
@@ -153,35 +163,44 @@ for col, (code, label) in zip(block_cols, block_options):
 
 selected_market = st.session_state[market_block_key]
 if selected_market == "ALL":
+    # Mixing KR/US/JP requires one common currency, so this view stays in KRW.
     scoped_snapshot_df = snapshot_df
     scoped_hist = combined_hist
     scope_label = "전체"
+    display_currency = "KRW"
+    value_col = "거래대금_원화"
+    hist_value_col = "trading_value_krw"
 else:
+    # A single market is one currency already -- show it natively (한국=원화,
+    # 미국=달러, 일본=엔화) instead of converting to KRW.
     scoped_snapshot_df = snapshot_df[snapshot_df["시장"] == selected_market]
     scoped_hist = combined_hist[combined_hist["market"] == selected_market]
     scope_label = MARKET_LABELS[selected_market]
+    display_currency = _MARKET_TO_CURRENCY[selected_market]
+    value_col = "거래대금_현지"
+    hist_value_col = "trading_value_native"
 
 st.divider()
 
 # --- 오늘 기준 산업군별 거래대금 (스냅샷) ---
-st.subheader(f"오늘 기준 산업군별 거래대금 ({scope_label})")
+st.subheader(f"오늘 기준 산업군별 거래대금 ({scope_label}, {display_currency})")
 if scoped_snapshot_df.empty:
     st.caption("표시할 데이터가 없습니다.")
 else:
     sector_totals = (
         scoped_snapshot_df.groupby(["sector_key", "산업군"])
-        .agg(거래대금=("거래대금", "sum"), 종목수=("종목명", "count"))
+        .agg(거래대금=(value_col, "sum"), 종목수=("종목명", "count"))
         .reset_index()
         .sort_values("거래대금", ascending=False)
     )
-    sector_totals["label"] = sector_totals["거래대금"].map(lambda v: format_money(v, "KRW"))
+    sector_totals["label"] = sector_totals["거래대금"].map(lambda v: format_money_korean(v, display_currency))
 
     bar = (
         alt.Chart(sector_totals)
         .mark_bar()
         .encode(
             x=alt.X("산업군:N", sort=sector_totals["산업군"].tolist(), title=None),
-            y=alt.Y("거래대금:Q", title="거래대금 (KRW)"),
+            y=alt.Y("거래대금:Q", title=f"거래대금 ({display_currency})"),
             tooltip=[
                 alt.Tooltip("산업군:N"),
                 alt.Tooltip("label:N", title="거래대금"),
@@ -193,22 +212,26 @@ else:
     st.altair_chart((bar + text).properties(height=380), use_container_width=True)
 
     summary_display_df = sector_totals[["산업군", "거래대금", "종목수"]].copy()
-    summary_display_df["거래대금"] = summary_display_df["거래대금"].map(lambda v: format_money(v, "KRW"))
+    summary_display_df["거래대금"] = summary_display_df["거래대금"].map(
+        lambda v: format_money_korean(v, display_currency)
+    )
     st.markdown(
         right_aligned_table_html(summary_display_df, right_align_cols=["거래대금", "종목수"]), unsafe_allow_html=True
     )
 
-# --- 시장별 (국내/미국/일본) 비중 -- only meaningful in the "전체" view ---
+# --- 시장별 (국내/미국/일본) 비중 -- only meaningful in the "전체" view, so it
+# always stays in KRW regardless of the block above (there's no single
+# native currency once KR/US/JP are broken out side by side). ---
 if selected_market == "ALL" and not scoped_snapshot_df.empty:
-    st.subheader("산업군별 국내 · 미국 · 일본 비중")
-    market_breakdown = scoped_snapshot_df.groupby(["산업군", "시장"])["거래대금"].sum().reset_index()
+    st.subheader("산업군별 국내 · 미국 · 일본 비중 (KRW)")
+    market_breakdown = scoped_snapshot_df.groupby(["산업군", "시장"])["거래대금_원화"].sum().reset_index()
     market_breakdown["시장"] = market_breakdown["시장"].map(MARKET_LABELS)
-    breakdown_pivot = market_breakdown.pivot(index="산업군", columns="시장", values="거래대금")
+    breakdown_pivot = market_breakdown.pivot(index="산업군", columns="시장", values="거래대금_원화")
     breakdown_pivot = breakdown_pivot.loc[sector_totals["산업군"]]  # keep the same 거래대금-descending order
     st.bar_chart(breakdown_pivot)
 
 # --- 거래대금 추이 (산업군 복수 선택 블록 + 기간 선택) ---
-st.subheader(f"거래대금 추이 ({scope_label})")
+st.subheader(f"거래대금 추이 ({scope_label}, {display_currency})")
 st.caption("그래프에 표시할 산업군을 블록으로 선택하세요 (여러 개를 눌러서 동시에 선택할 수 있습니다).")
 sector_options = [s["name_kr"] for s in SECTORS if s["name_kr"] in scoped_hist["산업군"].unique()]
 
@@ -246,7 +269,7 @@ period = st.radio(
 )
 
 trend_hist = scoped_hist[scoped_hist["산업군"].isin(selected_sectors)]
-daily_by_sector = trend_hist.groupby(["date", "산업군"])["trading_value_krw"].sum().reset_index()
+daily_by_sector = trend_hist.groupby(["date", "산업군"])[hist_value_col].sum().reset_index()
 daily_by_sector = filter_by_period(daily_by_sector, "date", period)
 with chart_area:
     if not selected_sectors:
@@ -254,4 +277,4 @@ with chart_area:
     elif daily_by_sector.empty:
         st.caption("표시할 데이터가 없습니다.")
     else:
-        st.line_chart(daily_by_sector.pivot(index="date", columns="산업군", values="trading_value_krw"))
+        st.line_chart(daily_by_sector.pivot(index="date", columns="산업군", values=hist_value_col))
