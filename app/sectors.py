@@ -54,13 +54,15 @@ SECTORS = [
     {
         "key": "shipbuilding",
         "name_kr": "조선",
-        "has_us": False,
+        "has_us": True,
         "kr_stocks": [
             ("009540", "HD한국조선해양"),
             ("010140", "삼성중공업"),
             ("042660", "한화오션"),
         ],
-        "us_stocks": [],
+        "us_stocks": [
+            ("HII", "Huntington Ingalls Industries"),
+        ],
         "jp_stocks": [
             ("7003.T", "Mitsui E&S"),
             ("7014.T", "Namura Shipbuilding"),
@@ -109,13 +111,17 @@ SECTORS = [
     {
         "key": "autonomous_driving",
         "name_kr": "자율주행",
-        "has_us": False,
+        "has_us": True,
         "kr_stocks": [
             ("012330", "현대모비스"),
             ("204320", "만도"),
             ("005380", "현대차"),
         ],
-        "us_stocks": [],
+        "us_stocks": [
+            ("TSLA", "Tesla"),
+            ("MBLY", "Mobileye"),
+            ("APTV", "Aptiv"),
+        ],
         "jp_stocks": [
             ("7203.T", "Toyota Motor"),
             ("6902.T", "Denso"),
@@ -124,13 +130,19 @@ SECTORS = [
     {
         "key": "physical_ai",
         "name_kr": "피지컬 AI",
-        "has_us": False,
+        "has_us": True,
         "kr_stocks": [
             ("277810", "레인보우로보틱스"),
             ("454910", "두산로보틱스"),
             ("058610", "에스피지"),
         ],
-        "us_stocks": [],
+        "us_stocks": [
+            ("PLTR", "Palantir Technologies"),
+            ("MSFT", "Microsoft"),
+            ("GOOGL", "Alphabet (Google)"),
+            ("META", "Meta Platforms"),
+            ("SYM", "Symbotic"),
+        ],
         "jp_stocks": [
             ("6954.T", "Fanuc"),
             ("6506.T", "Yaskawa Electric"),
@@ -139,13 +151,17 @@ SECTORS = [
     {
         "key": "cosmetics",
         "name_kr": "화장품",
-        "has_us": False,
+        "has_us": True,
         "kr_stocks": [
             ("090430", "아모레퍼시픽"),
             ("051900", "LG생활건강"),
             ("192820", "코스맥스"),
         ],
-        "us_stocks": [],
+        "us_stocks": [
+            ("EL", "Estée Lauder"),
+            ("ELF", "e.l.f. Beauty"),
+            ("COTY", "Coty"),
+        ],
         "jp_stocks": [
             ("4911.T", "Shiseido"),
             ("4452.T", "Kao Corporation"),
@@ -154,14 +170,18 @@ SECTORS = [
     {
         "key": "entertainment",
         "name_kr": "엔터테인먼트",
-        "has_us": False,
+        "has_us": True,
         "kr_stocks": [
             ("352820", "하이브"),
             ("035900", "JYP Ent."),
             ("041510", "에스엠"),
             ("122870", "와이지엔터테인먼트"),
         ],
-        "us_stocks": [],
+        "us_stocks": [
+            ("DIS", "Walt Disney"),
+            ("NFLX", "Netflix"),
+            ("WBD", "Warner Bros. Discovery"),
+        ],
         "jp_stocks": [
             ("6758.T", "Sony Group"),
             ("9602.T", "Toho"),

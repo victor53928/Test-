@@ -207,15 +207,38 @@ if selected_market == "ALL" and not scoped_snapshot_df.empty:
     breakdown_pivot = breakdown_pivot.loc[sector_totals["산업군"]]  # keep the same 거래대금-descending order
     st.bar_chart(breakdown_pivot)
 
-# --- 거래대금 추이 (산업군 복수 선택 + 기간 선택) ---
+# --- 거래대금 추이 (산업군 복수 선택 블록 + 기간 선택) ---
 st.subheader(f"거래대금 추이 ({scope_label})")
+st.caption("그래프에 표시할 산업군을 블록으로 선택하세요 (여러 개를 눌러서 동시에 선택할 수 있습니다).")
 sector_options = [s["name_kr"] for s in SECTORS if s["name_kr"] in scoped_hist["산업군"].unique()]
-selected_sectors = st.multiselect(
-    "그래프에 표시할 산업군 선택 (복수 선택 가능)",
-    options=sector_options,
-    default=sector_options,
-    key=f"sector_multiselect_{selected_market}",
-)
+
+sectors_selected_key = f"sector_trend_selected_{selected_market}"
+if sectors_selected_key not in st.session_state:
+    st.session_state[sectors_selected_key] = set(sector_options)  # default: all selected
+else:
+    # drop any previously-selected sector that isn't available in the current market scope
+    st.session_state[sectors_selected_key] &= set(sector_options)
+
+SECTOR_BLOCKS_PER_ROW = 5
+for row_start in range(0, len(sector_options), SECTOR_BLOCKS_PER_ROW):
+    row_options = sector_options[row_start : row_start + SECTOR_BLOCKS_PER_ROW]
+    cols = st.columns(SECTOR_BLOCKS_PER_ROW)
+    for col, name in zip(cols, row_options):
+        with col:
+            is_selected = name in st.session_state[sectors_selected_key]
+            if st.button(
+                name,
+                key=f"sector_trend_block_{selected_market}_{name}",
+                use_container_width=True,
+                type="primary" if is_selected else "secondary",
+            ):
+                if is_selected:
+                    st.session_state[sectors_selected_key].discard(name)
+                else:
+                    st.session_state[sectors_selected_key].add(name)
+                st.rerun()
+
+selected_sectors = [s for s in sector_options if s in st.session_state[sectors_selected_key]]
 
 chart_area = st.container()
 period = st.radio(
