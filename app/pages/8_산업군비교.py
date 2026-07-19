@@ -129,55 +129,106 @@ if fallback_errors:
         for err in fallback_errors:
             st.caption(err)
 
+# --- 시장 블록 (전체 / 한국 / 미국 / 일본) ---
+st.caption("시장을 선택하면 그 시장만 따로 비교할 수 있습니다.")
+available_markets = [m for m in ("KR", "US", "JP") if (snapshot_df["시장"] == m).any()]
+block_options = [("ALL", "🌐 전체")] + [(m, MARKET_LABELS[m]) for m in available_markets]
+
+market_block_key = "sector_compare_market"
+if st.session_state.get(market_block_key) not in [code for code, _ in block_options]:
+    st.session_state[market_block_key] = "ALL"
+
+block_cols = st.columns(len(block_options))
+for col, (code, label) in zip(block_cols, block_options):
+    with col:
+        is_selected = st.session_state[market_block_key] == code
+        if st.button(
+            label,
+            key=f"market_block_{code}",
+            use_container_width=True,
+            type="primary" if is_selected else "secondary",
+        ):
+            st.session_state[market_block_key] = code
+            st.rerun()
+
+selected_market = st.session_state[market_block_key]
+if selected_market == "ALL":
+    scoped_snapshot_df = snapshot_df
+    scoped_hist = combined_hist
+    scope_label = "전체"
+else:
+    scoped_snapshot_df = snapshot_df[snapshot_df["시장"] == selected_market]
+    scoped_hist = combined_hist[combined_hist["market"] == selected_market]
+    scope_label = MARKET_LABELS[selected_market]
+
+st.divider()
+
 # --- 오늘 기준 산업군별 거래대금 (스냅샷) ---
-st.subheader("오늘 기준 산업군별 거래대금")
-sector_totals = (
-    snapshot_df.groupby(["sector_key", "산업군"])
-    .agg(거래대금=("거래대금", "sum"), 종목수=("종목명", "count"))
-    .reset_index()
-    .sort_values("거래대금", ascending=False)
-)
-sector_totals["label"] = sector_totals["거래대금"].map(lambda v: format_money(v, "KRW"))
-
-bar = (
-    alt.Chart(sector_totals)
-    .mark_bar()
-    .encode(
-        x=alt.X("산업군:N", sort=sector_totals["산업군"].tolist(), title=None),
-        y=alt.Y("거래대금:Q", title="거래대금 (KRW)"),
-        tooltip=[alt.Tooltip("산업군:N"), alt.Tooltip("label:N", title="거래대금"), alt.Tooltip("종목수:Q", title="종목 수")],
+st.subheader(f"오늘 기준 산업군별 거래대금 ({scope_label})")
+if scoped_snapshot_df.empty:
+    st.caption("표시할 데이터가 없습니다.")
+else:
+    sector_totals = (
+        scoped_snapshot_df.groupby(["sector_key", "산업군"])
+        .agg(거래대금=("거래대금", "sum"), 종목수=("종목명", "count"))
+        .reset_index()
+        .sort_values("거래대금", ascending=False)
     )
-)
-text = bar.mark_text(dy=-8, fontSize=11).encode(text="label:N")
-st.altair_chart((bar + text).properties(height=380), use_container_width=True)
+    sector_totals["label"] = sector_totals["거래대금"].map(lambda v: format_money(v, "KRW"))
 
-summary_display_df = sector_totals[["산업군", "거래대금", "종목수"]].copy()
-summary_display_df["거래대금"] = summary_display_df["거래대금"].map(lambda v: format_money(v, "KRW"))
-st.markdown(
-    right_aligned_table_html(summary_display_df, right_align_cols=["거래대금", "종목수"]), unsafe_allow_html=True
+    bar = (
+        alt.Chart(sector_totals)
+        .mark_bar()
+        .encode(
+            x=alt.X("산업군:N", sort=sector_totals["산업군"].tolist(), title=None),
+            y=alt.Y("거래대금:Q", title="거래대금 (KRW)"),
+            tooltip=[
+                alt.Tooltip("산업군:N"),
+                alt.Tooltip("label:N", title="거래대금"),
+                alt.Tooltip("종목수:Q", title="종목 수"),
+            ],
+        )
+    )
+    text = bar.mark_text(dy=-8, fontSize=11).encode(text="label:N")
+    st.altair_chart((bar + text).properties(height=380), use_container_width=True)
+
+    summary_display_df = sector_totals[["산업군", "거래대금", "종목수"]].copy()
+    summary_display_df["거래대금"] = summary_display_df["거래대금"].map(lambda v: format_money(v, "KRW"))
+    st.markdown(
+        right_aligned_table_html(summary_display_df, right_align_cols=["거래대금", "종목수"]), unsafe_allow_html=True
+    )
+
+# --- 시장별 (국내/미국/일본) 비중 -- only meaningful in the "전체" view ---
+if selected_market == "ALL" and not scoped_snapshot_df.empty:
+    st.subheader("산업군별 국내 · 미국 · 일본 비중")
+    market_breakdown = scoped_snapshot_df.groupby(["산업군", "시장"])["거래대금"].sum().reset_index()
+    market_breakdown["시장"] = market_breakdown["시장"].map(MARKET_LABELS)
+    breakdown_pivot = market_breakdown.pivot(index="산업군", columns="시장", values="거래대금")
+    breakdown_pivot = breakdown_pivot.loc[sector_totals["산업군"]]  # keep the same 거래대금-descending order
+    st.bar_chart(breakdown_pivot)
+
+# --- 거래대금 추이 (산업군 복수 선택 + 기간 선택) ---
+st.subheader(f"거래대금 추이 ({scope_label})")
+sector_options = [s["name_kr"] for s in SECTORS if s["name_kr"] in scoped_hist["산업군"].unique()]
+selected_sectors = st.multiselect(
+    "그래프에 표시할 산업군 선택 (복수 선택 가능)",
+    options=sector_options,
+    default=sector_options,
+    key=f"sector_multiselect_{selected_market}",
 )
 
-# --- 시장별 (국내/미국/일본) 비중 ---
-st.subheader("산업군별 국내 · 미국 · 일본 비중")
-market_breakdown = (
-    snapshot_df.groupby(["산업군", "시장"])["거래대금"].sum().reset_index()
-)
-market_breakdown["시장"] = market_breakdown["시장"].map(MARKET_LABELS)
-breakdown_pivot = market_breakdown.pivot(index="산업군", columns="시장", values="거래대금")
-breakdown_pivot = breakdown_pivot.loc[sector_totals["산업군"]]  # keep the same 거래대금-descending order
-st.bar_chart(breakdown_pivot)
-
-# --- 거래대금 추이 (기간 선택) ---
-st.subheader("거래대금 추이")
 chart_area = st.container()
 period = st.radio(
     "기간", options=list(PERIOD_OPTIONS.keys()), index=list(PERIOD_OPTIONS.keys()).index(DEFAULT_PERIOD), horizontal=True
 )
 
-daily_by_sector = combined_hist.groupby(["date", "산업군"])["trading_value_krw"].sum().reset_index()
+trend_hist = scoped_hist[scoped_hist["산업군"].isin(selected_sectors)]
+daily_by_sector = trend_hist.groupby(["date", "산업군"])["trading_value_krw"].sum().reset_index()
 daily_by_sector = filter_by_period(daily_by_sector, "date", period)
 with chart_area:
-    if daily_by_sector.empty:
+    if not selected_sectors:
+        st.caption("표시할 산업군을 선택해주세요.")
+    elif daily_by_sector.empty:
         st.caption("표시할 데이터가 없습니다.")
     else:
         st.line_chart(daily_by_sector.pivot(index="date", columns="산업군", values="trading_value_krw"))
