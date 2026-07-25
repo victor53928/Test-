@@ -15,7 +15,7 @@ if str(_REPO_ROOT) not in sys.path:
 import pandas as pd
 import streamlit as st
 
-from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, format_money, right_aligned_table_html
+from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, format_money, format_money_korean, right_aligned_table_html
 from app.fundamentals import get_financial_trend, get_valuation
 from app.live_price import get_price_data
 from app.ticker_lookup import DartApiKeyMissing, resolve_kr_ticker, resolve_yf_ticker
@@ -224,7 +224,7 @@ def _format_value(value, kind, currency):
     if value is None:
         return "N/A"
     if kind == "money":
-        return format_money(value, currency)
+        return format_money_korean(value, currency)
     if kind == "money2":
         return format_money(value, currency, decimals=2)
     if kind == "pct":

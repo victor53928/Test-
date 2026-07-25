@@ -34,7 +34,11 @@ def _live_index_fallback(symbol: str):
     if hist.empty:
         raise ValueError(f"{symbol}: 조회된 데이터가 없습니다.")
     return pd.DataFrame(
-        {"date": [d.strftime("%Y-%m-%d") for d in hist.index], "close": [float(v) for v in hist["Close"]]}
+        {
+            "date": [d.strftime("%Y-%m-%d") for d in hist.index],
+            "close": [float(v) for v in hist["Close"]],
+            "volume": [int(v) if v else None for v in hist["Volume"]],
+        }
     )
 
 
@@ -88,6 +92,8 @@ for group in INDICES:
         prev = symbol_df["close"].iloc[-2] if len(symbol_df) >= 2 else None
         delta_pct = f"{(latest - prev) / prev * 100:.2f}%" if prev else None
         col.metric(name, f"{latest:,.2f}", delta=delta_pct)
+        latest_volume = symbol_df["volume"].iloc[-1] if "volume" in symbol_df else None
+        col.caption(f"거래량: {latest_volume:,.0f}" if pd.notna(latest_volume) else "거래량: N/A")
 
     charts_area = st.container()
     period = st.radio(
@@ -105,6 +111,11 @@ for group in INDICES:
                 continue
             st.markdown(f"**{name}**")
             st.line_chart(symbol_df.set_index("date")["close"])
+            if symbol_df["volume"].fillna(0).gt(0).any():
+                st.caption("거래량")
+                st.bar_chart(symbol_df.set_index("date")["volume"])
+            else:
+                st.caption("이 지수는 Yahoo Finance에서 거래량을 제공하지 않습니다.")
 
 if fallback_notes:
     st.caption(

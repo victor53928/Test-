@@ -12,11 +12,13 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import altair as alt
 import pandas as pd
 import streamlit as st
+import yfinance as yf
 
 from app.db import delete_watchlist, get_conn, get_watchlist, upsert_watchlist
-from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, format_money
+from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money, format_money_korean
 from app.fundamentals import get_financial_trend, get_valuation
 from app.live_price import get_price_data
 from app.news import SOURCE_DOMAINS, fetch_news
@@ -30,6 +32,50 @@ GROUPS = [
     ("🇯🇵 일본 주식", ("JP",)),
 ]
 BLOCKS_PER_ROW = 6
+KOSPI_SYMBOL = "^KS11"
+KOSPI_STALE_DAYS = 5
+
+
+def _kospi_vs_stock_chart(kospi_df: pd.DataFrame, stock_df: pd.DataFrame, stock_label: str):
+    """Dual-axis chart: 코스피 on the left axis, the selected stock's own
+    price on an independently-scaled right axis, so their trends can be
+    compared directly even though the two are on completely different scales."""
+    kospi_chart = (
+        alt.Chart(kospi_df)
+        .mark_line(color="#ff7f0e")
+        .encode(
+            x=alt.X("date:T", title="date"),
+            y=alt.Y("close:Q", title="코스피", axis=alt.Axis(titleColor="#ff7f0e")),
+        )
+    )
+    stock_chart = (
+        alt.Chart(stock_df)
+        .mark_line(color="#1f77b4")
+        .encode(
+            x="date:T",
+            y=alt.Y("close:Q", title=stock_label, axis=alt.Axis(titleColor="#1f77b4")),
+        )
+    )
+    return alt.layer(kospi_chart, stock_chart).resolve_scale(y="independent").properties(height=380)
+
+
+@st.cache_data(ttl=300)
+def _cached_kospi_history(days: int) -> pd.DataFrame:
+    """코스피 close history for the dual-axis comparison chart. Tries the
+    batch-collected index_prices table first, falls back to a live yfinance
+    fetch if it's missing or stale."""
+    with get_conn() as conn:
+        db_df = pd.read_sql("SELECT date, close FROM index_prices WHERE symbol = ? ORDER BY date", conn, params=[KOSPI_SYMBOL])
+    is_stale = db_df.empty or (
+        pd.Timestamp.today().normalize() - pd.to_datetime(db_df["date"]).max()
+    ).days > KOSPI_STALE_DAYS
+    if not is_stale:
+        return db_df
+    hist = yf.Ticker(KOSPI_SYMBOL).history(period=f"{days}d")
+    if hist.empty:
+        return db_df  # fall back to whatever the DB had, even if stale, rather than nothing
+    return pd.DataFrame({"date": [d.strftime("%Y-%m-%d") for d in hist.index], "close": [float(v) for v in hist["Close"]]})
+
 
 st.set_page_config(page_title="관심종목", layout="wide")
 st.title("관심종목 뉴스 & 시세")
@@ -118,7 +164,7 @@ else:
                 if entry["market"] in ("KOSPI", "KOSDAQ"):
                     m1, m2, m3 = st.columns(3)
                     m1.metric("종가", format_money(data["latest_price"], data["currency"]), delta=delta)
-                    m2.metric("시가총액", format_money(data["market_cap"], data["currency"]))
+                    m2.metric("시가총액", format_money_korean(data["market_cap"], data["currency"]))
                     m3.metric("거래량", f"{latest_volume:,.0f}" if latest_volume is not None else "N/A")
                 else:
                     st.metric(
@@ -128,8 +174,21 @@ else:
                     )
                 st.caption(f"기준일자: {as_of}")
 
+                if entry["market"] in ("KOSPI", "KOSDAQ"):
+                    kospi_df = _cached_kospi_history(PERIOD_OPTIONS[entry_period])
+                    kospi_df = filter_by_period(kospi_df, "date", entry_period)
+                    if not kospi_df.empty:
+                        st.caption("코스피 지수(왼쪽 축) 대비 이 종목 가격(오른쪽 축) 추이 비교")
+                        st.altair_chart(
+                            _kospi_vs_stock_chart(kospi_df, history[["date", "close"]], f"{entry['name']} ({data['currency']})"),
+                            use_container_width=True,
+                        )
+                    else:
+                        st.line_chart(history.set_index("date")["close"], height=350)
+                else:
+                    st.line_chart(history.set_index("date")["close"], height=350)
+
                 price_history = history.set_index("date")
-                st.line_chart(price_history["close"], height=350)
                 st.caption("거래량")
                 st.bar_chart(price_history["volume"], height=150)
         except Exception as e:
@@ -147,7 +206,7 @@ else:
                 return f"{v:.2f}%" if v is not None else "N/A"
 
             row1 = st.columns(4)
-            row1[0].metric("시가총액", format_money(valuation["market_cap"], currency))
+            row1[0].metric("시가총액", format_money_korean(valuation["market_cap"], currency))
             row1[1].metric("PER", _num(valuation["per"]))
             row1[2].metric("PBR", _num(valuation["pbr"]))
             row1[3].metric("EPS", format_money(valuation["eps"], currency, decimals=2))

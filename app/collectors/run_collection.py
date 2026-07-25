@@ -15,6 +15,7 @@ from app.db import (
     init_db,
     seed_sector_stocks_if_empty,
     upsert_financials,
+    upsert_index_price,
     upsert_market_data,
     upsert_price,
     upsert_stock,
@@ -165,12 +166,12 @@ def collect_indices():
     with get_conn() as conn:
         for symbol, name in all_index_symbols():
             try:
-                rows = price_collector.fetch_price_history(symbol, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
+                rows = price_collector.fetch_price_history_with_volume(symbol, period=f"{MARKET_DATA_LOOKBACK_DAYS}d")
             except Exception as e:
                 print(f"[indices] {symbol} {name}: failed ({e})")
                 continue
-            for date, close in rows:
-                upsert_price(conn, "index_prices", symbol, date, close)
+            for date, close, volume in rows:
+                upsert_index_price(conn, symbol, date, close, volume)
             print(f"[indices] {symbol} {name}: {len(rows)} rows")
 
 

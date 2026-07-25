@@ -37,6 +37,7 @@ from app.formatting import (
     PERIOD_OPTIONS,
     filter_by_period,
     format_money,
+    format_money_korean,
     right_aligned_table_html,
 )
 from app.live_price import get_price_data
@@ -54,7 +55,7 @@ def _labeled_line_chart(df: pd.DataFrame, value_col: str, value_title: str, curr
     of each line showing its latest value, so numbers are visible on the
     chart itself, not just in the table above it."""
     df = df.copy()
-    df["label"] = df[value_col].map(lambda v: format_money(v, currency))
+    df["label"] = df[value_col].map(lambda v: format_money_korean(v, currency))
 
     base = alt.Chart(df).encode(
         x=alt.X("date:T", title="date"),
@@ -270,7 +271,7 @@ else:
             "티커": summary["ticker"],
             "기준일자": summary["as_of"].fillna("N/A"),
             "종가": summary["close"].map(lambda v: format_money(v, currency, decimals=2) if pd.notna(v) else "N/A"),
-            "시가총액": summary["market_cap"].map(lambda v: format_money(v, currency) if pd.notna(v) else "N/A"),
+            "시가총액": summary["market_cap"].map(lambda v: format_money_korean(v, currency) if pd.notna(v) else "N/A"),
             "거래량": summary["volume"].map(lambda v: f"{v:,.0f}" if pd.notna(v) else "N/A"),
         }
     )
@@ -326,8 +327,8 @@ else:
                 "종목명": market_financials["ticker"].map(name_map),
                 "연도": market_financials["year"],
                 "분기": market_financials["quarter"],
-                "매출": market_financials["revenue"].map(lambda v: format_money(v, currency)),
-                "영업이익": market_financials["operating_income"].map(lambda v: format_money(v, currency)),
+                "매출": market_financials["revenue"].map(lambda v: format_money_korean(v, currency)),
+                "영업이익": market_financials["operating_income"].map(lambda v: format_money_korean(v, currency)),
             }
         )
         with st.expander(f"{MARKET_LABELS[market_code]} 매출 / 영업이익"):

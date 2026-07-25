@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS index_prices (
     symbol TEXT NOT NULL,
     date TEXT NOT NULL,
     close REAL,
+    volume INTEGER,
     PRIMARY KEY (symbol, date)
 );
 """
@@ -108,6 +109,27 @@ def _migrate_legacy_check_constraints(conn):
         conn.execute(f"DROP TABLE {table}_legacy")
 
 
+# New (nullable) columns added to a table after it may already have been
+# created by an older version of this app -- ALTER TABLE ADD COLUMN is safe
+# to run on an existing table, unlike the CHECK-constraint case above which
+# needs a full rebuild.
+_LEGACY_COLUMN_ADDITIONS = {
+    "index_prices": ["volume INTEGER"],
+}
+
+
+def _migrate_legacy_missing_columns(conn):
+    for table, column_defs in _LEGACY_COLUMN_ADDITIONS.items():
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+        if row is None or row[0] is None:
+            continue  # table doesn't exist yet (SCHEMA below will create it with the column already)
+        existing_columns = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for column_def in column_defs:
+            column_name = column_def.split()[0]
+            if column_name not in existing_columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column_def}")
+
+
 @contextmanager
 def get_conn():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -115,6 +137,7 @@ def get_conn():
     try:
         _migrate_legacy_check_constraints(conn)
         conn.executescript(SCHEMA)
+        _migrate_legacy_missing_columns(conn)
         yield conn
         conn.commit()
     finally:
@@ -165,6 +188,14 @@ def upsert_price(conn, table, symbol, date, close):
         f"""INSERT INTO {table} (symbol, date, close) VALUES (?, ?, ?)
            ON CONFLICT(symbol, date) DO UPDATE SET close=excluded.close""",
         (symbol, date, close),
+    )
+
+
+def upsert_index_price(conn, symbol, date, close, volume):
+    conn.execute(
+        """INSERT INTO index_prices (symbol, date, close, volume) VALUES (?, ?, ?, ?)
+           ON CONFLICT(symbol, date) DO UPDATE SET close=excluded.close, volume=excluded.volume""",
+        (symbol, date, close, volume),
     )
 
 
