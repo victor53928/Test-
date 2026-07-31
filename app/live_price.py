@@ -1,15 +1,15 @@
 """Latest price + recent history for watchlist entries.
 
-KR tickers (KOSPI/KOSDAQ) go through Naver Finance (see app/naver_finance.py);
-US/JP tickers go through yfinance. "Latest" here means the most recent
-close/quote available from these providers (refreshed on whatever cache TTL
-the caller uses), not a tick-by-tick real-time feed.
+KR tickers (KOSPI/KOSDAQ) go through app/kr_data_source.py (pykrx first,
+Naver Finance fallback); US/JP tickers go through yfinance. "Latest" here
+means the most recent close/quote available from these providers (refreshed
+on whatever cache TTL the caller uses), not a tick-by-tick real-time feed.
 """
 
 import pandas as pd
 import yfinance as yf
 
-from app import naver_finance
+from app import kr_data_source
 
 _CURRENCY_BY_MARKET = {"KOSPI": "KRW", "KOSDAQ": "KRW", "US": "USD", "JP": "JPY"}
 
@@ -46,7 +46,7 @@ def _summarize(dates, closes, volumes, currency, market_cap=None) -> dict:
 
 
 def _get_kr_price_data(ticker: str, days: int) -> dict:
-    rows = naver_finance.fetch_daily_ohlcv(ticker, days)
+    rows = kr_data_source.fetch_daily_ohlcv(ticker, days)
     if not rows:
         raise ValueError(f"{ticker}: 조회된 시세 데이터가 없습니다.")
 
@@ -56,14 +56,14 @@ def _get_kr_price_data(ticker: str, days: int) -> dict:
 
     summary = {}
     try:
-        summary = naver_finance.fetch_market_summary(ticker)
+        summary = kr_data_source.fetch_market_summary(ticker)
     except Exception:
         pass  # market cap is a nice-to-have; price/volume above still work without it
 
     result = _summarize(dates, closes, volumes, "KRW", market_cap=summary.get("market_cap"))
 
-    # Naver doesn't publish historical daily market cap; approximate it as
-    # close * shares-outstanding (same approach used for US/JP below),
+    # Neither pykrx nor Naver publishes historical daily market cap; approximate
+    # it as close * shares-outstanding (same approach used for US/JP below),
     # assuming shares outstanding is roughly constant over the window.
     shares = summary.get("shares_outstanding")
     if shares:

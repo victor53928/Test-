@@ -1,11 +1,11 @@
 """Valuation (Yahoo-Finance-style detail) and multi-year revenue/operating
 income trend for watchlist entries.
 
-KR data comes from Naver Finance (see app/naver_finance.py) for valuation,
-and DART (revenue/operating income, up to 10 years of annual reports,
-requires DART_API_KEY). US/JP data comes from yfinance; free-tier annual
-financials there typically only go back ~4 years, which is a data-source
-limitation, not a bug.
+KR data comes from app/kr_data_source.py (pykrx first, Naver Finance
+fallback) for valuation, and DART (revenue/operating income, up to 10 years
+of annual reports, requires DART_API_KEY). US/JP data comes from yfinance;
+free-tier annual financials there typically only go back ~4 years, which is
+a data-source limitation, not a bug.
 """
 
 import datetime
@@ -14,7 +14,7 @@ import time
 import pandas as pd
 import yfinance as yf
 
-from app import naver_finance
+from app import kr_data_source
 from app.collectors import dart_collector
 from app.config import DART_API_KEY
 
@@ -48,11 +48,12 @@ def get_valuation(ticker: str, market: str) -> dict:
 def _get_kr_valuation(ticker: str) -> dict:
     result = dict(_EMPTY_VALUATION)
 
-    # market_cap/per/pbr/eps/bps/dividend_yield/dps all come from one Naver
-    # Finance page fetch; each field is parsed independently within it, so a
-    # single unparseable field doesn't blank out the rest.
+    # market_cap/per/pbr/eps/bps/dividend_yield/dps all come from one
+    # kr_data_source fetch (pykrx first, Naver Finance fallback); each field
+    # is parsed independently within it, so a single missing field doesn't
+    # blank out the rest.
     try:
-        summary = naver_finance.fetch_market_summary(ticker)
+        summary = kr_data_source.fetch_market_summary(ticker)
         result["market_cap"] = summary.get("market_cap")
         result["per"] = summary.get("per")
         result["pbr"] = summary.get("pbr")
@@ -69,7 +70,7 @@ def _get_kr_valuation(ticker: str) -> dict:
 
     # Average volume, from a separate 90-day daily-price pull.
     try:
-        rows = naver_finance.fetch_daily_ohlcv(ticker, days=90)
+        rows = kr_data_source.fetch_daily_ohlcv(ticker, days=90)
         if rows:
             volumes = [r[2] for r in rows]
             result["avg_volume"] = sum(volumes) / len(volumes)
