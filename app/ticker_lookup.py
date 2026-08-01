@@ -1,12 +1,16 @@
 """Resolves a company name to a ticker, so add-by-name forms don't require
 the user to already know the ticker code.
 
-KR resolution uses DART's company list (reliable, exact/substring match).
-US/JP resolution is best-effort via yfinance's search endpoint, which isn't
-guaranteed to exist/work across all yfinance versions -- callers should treat
-a None result as "ask the user for the exact ticker instead."
+KR resolution tries pykrx's own ticker/name listing first (no API key
+needed, covers every KOSPI/KOSDAQ ticker) and falls back to DART's company
+list (broader coverage of corporate name variants, but requires
+DART_API_KEY) only if pykrx can't find a match. US/JP resolution is
+best-effort via yfinance's search endpoint, which isn't guaranteed to
+exist/work across all yfinance versions -- callers should treat a None
+result as "ask the user for the exact ticker instead."
 """
 
+from app import pykrx_source
 from app.collectors import dart_collector
 from app.config import DART_API_KEY
 
@@ -16,14 +20,18 @@ class DartApiKeyMissing(RuntimeError):
 
 
 def resolve_kr_ticker(name: str) -> str:
-    """Returns a stock code for `name` via DART's company list, or None if no
-    (unique) match is found. Raises DartApiKeyMissing if DART_API_KEY isn't
-    configured -- KR name lookup has no key-free fallback, unlike price data."""
+    """Returns a stock code for `name`, or None if no (unique) match is
+    found anywhere. Tries pykrx first; only reaches for DART (if configured)
+    when pykrx doesn't resolve it."""
+    try:
+        ticker = pykrx_source.resolve_ticker_by_name(name)
+        if ticker:
+            return ticker
+    except Exception:
+        pass
+
     if not DART_API_KEY:
-        raise DartApiKeyMissing(
-            "한국 종목명 검색에는 DART_API_KEY가 필요합니다. .env에 DART_API_KEY를 설정해주세요 "
-            "(무료, https://opendart.fss.or.kr 에서 발급)."
-        )
+        return None
 
     name_map = dart_collector.get_corp_name_map()
     if name in name_map:

@@ -11,6 +11,7 @@ Ticker is the 6-digit KRX code (e.g. "005930"), no market suffix.
 import datetime
 
 from pykrx import stock
+from pykrx.website import krx as krx_website
 
 # pykrx uses 0 (not NaN/None) to mean "not available" for these fundamental fields.
 _FUNDAMENTAL_FIELDS = [
@@ -21,6 +22,8 @@ _FUNDAMENTAL_FIELDS = [
     ("DIV", "dividend_yield"),
     ("DPS", "dps"),
 ]
+
+_ticker_name_map_cache = None  # {종목명: 티커}, built once per process
 
 
 def fetch_daily_ohlcv(ticker: str, days: int):
@@ -77,3 +80,46 @@ def fetch_market_summary(ticker: str) -> dict:
     if not result:
         raise ValueError(f"{ticker}: pykrx에서 데이터를 가져오지 못했습니다.")
     return result
+
+
+def _ticker_name_map() -> dict:
+    """Returns {종목명: 티커} for every KOSPI+KOSDAQ ticker, built from
+    pykrx.website.krx.get_market_ticker_and_name -- an internal helper (not
+    part of the documented `pykrx.stock` API) that returns the full listing
+    in one bulk call. The public `stock.get_market_ticker_name(ticker)` only
+    goes ticker -> name one at a time, which would mean ~2,700 individual
+    calls just to resolve one company name. Cached in memory for the life of
+    the process, since the listing barely changes day to day.
+    """
+    global _ticker_name_map_cache
+    if _ticker_name_map_cache is not None:
+        return _ticker_name_map_cache
+
+    today = datetime.date.today()
+    series = None
+    for days_back in range(8):  # covers weekends/holidays without a network round-trip to resolve one
+        date_str = (today - datetime.timedelta(days=days_back)).strftime("%Y%m%d")
+        try:
+            candidate = krx_website.get_market_ticker_and_name(date_str, "ALL")
+        except Exception:
+            continue
+        if candidate is not None and not candidate.empty:
+            series = candidate
+            break
+
+    if series is None:
+        raise ValueError("pykrx에서 종목 목록을 가져오지 못했습니다.")
+
+    _ticker_name_map_cache = {name: ticker for ticker, name in series.items()}
+    return _ticker_name_map_cache
+
+
+def resolve_ticker_by_name(name: str):
+    """Returns the 6-digit KRX ticker for an exact or unique-substring match
+    of `name`, or None if not found / ambiguous (mirrors
+    dart_collector.get_corp_name_map()'s matching rule)."""
+    name_map = _ticker_name_map()
+    if name in name_map:
+        return name_map[name]
+    matches = [ticker for company_name, ticker in name_map.items() if name in company_name]
+    return matches[0] if len(matches) == 1 else None
