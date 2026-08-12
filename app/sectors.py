@@ -226,6 +226,18 @@ COMMODITIES = [
     ("SI=F", "은"),
     ("HG=F", "구리"),
     ("CL=F", "WTI 원유"),
+    ("TIO=F", "철광석"),
+]
+# 텅스텐(tungsten)은 Yahoo Finance에 추적 가능한 선물/ETF 티커가 없어 제외했습니다
+# (COMEX/LME 등 주요 거래소에서 거래되는 표준화된 선물 계약 자체가 없는 원자재입니다).
+
+# Metals & mining ETFs -- a basket of mining-company stocks rather than the
+# raw commodity price, so they move differently (equity risk + commodity
+# exposure) than the futures above; shown in their own section on the page.
+COMMODITY_ETFS = [
+    ("SLX", "VanEck 철강 ETF (SLX)"),
+    ("XME", "SPDR S&P 금속·광업 ETF (XME)"),
+    ("PICK", "iShares 글로벌 금속·광업 ETF (PICK)"),
 ]
 
 BONDS = [
@@ -249,3 +261,30 @@ INDICES = [
 
 def all_index_symbols():
     return [(sym, name) for group in INDICES for sym, name in group["symbols"]]
+
+
+# Major dividend stocks (배당금 page), grouped by market -- KR: 금융지주/통신/담배
+# 등 배당수익률이 꾸준히 높은 대형주 위주, US: 배당 귀족(Dividend Aristocrat)에
+# 속하거나 배당수익률이 높기로 잘 알려진 대형주 위주.
+DIVIDEND_STOCKS = {
+    "KR": [
+        ("105560", "KB금융"),
+        ("055550", "신한지주"),
+        ("086790", "하나금융지주"),
+        ("316140", "우리금융지주"),
+        ("017670", "SK텔레콤"),
+        ("030200", "KT"),
+        ("033780", "KT&G"),
+        ("000810", "삼성화재"),
+    ],
+    "US": [
+        ("JNJ", "Johnson & Johnson"),
+        ("PG", "Procter & Gamble"),
+        ("KO", "Coca-Cola"),
+        ("PEP", "PepsiCo"),
+        ("T", "AT&T"),
+        ("VZ", "Verizon"),
+        ("MO", "Altria"),
+        ("O", "Realty Income"),
+    ],
+}
