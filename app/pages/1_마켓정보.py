@@ -18,8 +18,10 @@ import yfinance as yf
 from app.db import get_conn
 from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period
 from app.sectors import INDICES
+from app.theme import colored_metric, inject_theme
 
 st.set_page_config(page_title="마켓정보", layout="wide")
+inject_theme()
 st.title("마켓정보")
 st.caption("한국·일본·대만·미국 주요 지수")
 
@@ -90,8 +92,9 @@ for group in INDICES:
             continue
         latest = symbol_df["close"].iloc[-1]
         prev = symbol_df["close"].iloc[-2] if len(symbol_df) >= 2 else None
-        delta_pct = f"{(latest - prev) / prev * 100:.2f}%" if prev else None
-        col.metric(name, f"{latest:,.2f}", delta=delta_pct)
+        delta_pct = (latest - prev) / prev * 100 if prev else None
+        with col:
+            colored_metric(name, f"{latest:,.2f}", delta_value=delta_pct, delta_suffix="%")
         latest_volume = symbol_df["volume"].iloc[-1] if "volume" in symbol_df else None
         col.caption(f"거래량: {latest_volume:,.0f}" if pd.notna(latest_volume) else "거래량: N/A")
 

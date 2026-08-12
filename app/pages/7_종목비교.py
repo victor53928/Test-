@@ -18,6 +18,7 @@ import streamlit as st
 from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, format_money, format_money_korean, right_aligned_table_html
 from app.fundamentals import get_financial_trend, get_valuation
 from app.live_price import get_price_data
+from app.theme import inject_theme
 from app.ticker_lookup import DartApiKeyMissing, resolve_kr_ticker, resolve_yf_ticker
 
 MARKET_LABELS = {"KOSPI": "코스피", "KOSDAQ": "코스닥", "US": "미국", "JP": "일본"}
@@ -25,6 +26,7 @@ CURRENCY_BY_MARKET = {"KOSPI": "KRW", "KOSDAQ": "KRW", "US": "USD", "JP": "JPY"}
 MAX_COMPARE = 5
 
 st.set_page_config(page_title="종목 비교", layout="wide")
+inject_theme()
 st.title("종목 비교")
 st.caption(f"최대 {MAX_COMPARE}개 종목을 골라 가격/시가총액/거래량/거래금액/실적/주요 지표를 나란히 비교합니다.")
 

@@ -20,8 +20,10 @@ import streamlit as st
 from app.db import get_conn
 from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money, right_aligned_table_html
 from app.sectors import BONDS
+from app.theme import inject_theme
 
 st.set_page_config(page_title="채권", layout="wide")
+inject_theme()
 st.title("채권 가격 / 금리")
 
 name_map = dict(BONDS)

@@ -15,8 +15,10 @@ if str(_REPO_ROOT) not in sys.path:
 import streamlit as st
 
 from app.news import SOURCE_DOMAINS, fetch_news
+from app.theme import inject_theme
 
 st.set_page_config(page_title="뉴스", layout="wide")
+inject_theme()
 st.title("뉴스")
 st.caption("매일경제·한국경제 기사를 우선 표시하고, 없으면 전체 뉴스로 대신 표시합니다.")
 

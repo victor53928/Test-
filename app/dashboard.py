@@ -12,7 +12,10 @@ if str(_REPO_ROOT) not in sys.path:
 
 import streamlit as st
 
+from app.theme import inject_theme
+
 st.set_page_config(page_title="포트폴리오 리밸런싱", layout="wide")
+inject_theme()
 st.title("포트폴리오 리밸런싱 대시보드")
 
 st.markdown("왼쪽 사이드바에서 원하는 화면으로 이동하세요.")

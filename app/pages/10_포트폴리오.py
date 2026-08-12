@@ -18,9 +18,11 @@ from app.db import delete_holding, get_conn, upsert_holding
 from app.formatting import format_money, right_aligned_table_html
 from app.portfolio import compute_rebalancing_plan, get_holdings_with_value, summarize_by_asset_class
 from app.sectors import BONDS, COMMODITIES, all_jp_tickers, all_kr_tickers, all_us_tickers
+from app.theme import inject_theme
 
 ASSET_CLASS_LABELS = {"stock": "주식", "commodity": "원자재", "bond": "채권"}
 
+inject_theme()
 st.title("포트폴리오 입력 및 리밸런싱")
 
 stock_options = [(t, f"{name} ({t})") for t, name, _ in all_kr_tickers() + all_us_tickers() + all_jp_tickers()]

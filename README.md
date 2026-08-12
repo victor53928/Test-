@@ -7,6 +7,14 @@
 반도체, 방산, 조선, 에너지, 원전, 자율주행, 피지컬 AI, 화장품, 엔터테인먼트, 2차전지/배터리
 (10개 산업군 전부 한국·미국·일본 대표주를 함께 추적)
 
+## 디자인
+
+증권사 앱/트레이딩 플랫폼 스타일의 카드형 지표와 색상 테마를 적용했습니다 (`app/theme.py`,
+`.streamlit/config.toml`, [streamlit-extras](https://github.com/arnaudmiribel/streamlit-extras)
+사용). 가격 등락은 **상승 = 빨간색, 하락 = 파란색**(한국 증시 관례)으로 표시됩니다 —
+Streamlit 기본 `st.metric`의 등락 색상은 미국 관례(상승=초록색)라 그대로 쓰지 않고
+`app/theme.py`의 `colored_metric()`으로 대체했습니다.
+
 ## 개발 단계
 - [x] Phase 1: 국내 주식 데이터 파이프라인 (네이버 증권 + DART) + 뷰어
 - [x] Phase 2: 미국 대표주 통합 (yfinance)

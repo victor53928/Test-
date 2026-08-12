@@ -29,6 +29,7 @@ from app.formatting import (
 from app.live_price import get_price_data
 from app.portfolio import to_krw
 from app.sectors import SECTORS
+from app.theme import inject_theme
 
 STALE_DAYS = 5  # DB rows older than this trigger a live fallback fetch, same threshold as 산업군별
 FALLBACK_DAYS = 30
@@ -38,6 +39,7 @@ _MARKET_TO_LIVE_MARKET = {"KR": "KOSPI", "US": "US", "JP": "JP"}
 SECTOR_NAME_BY_KEY = {s["key"]: s["name_kr"] for s in SECTORS}
 
 st.set_page_config(page_title="산업군 비교", layout="wide")
+inject_theme()
 st.title("산업군별 거래대금 비교")
 st.caption(
     "산업군에 속한 국내/미국/일본 종목들의 거래대금(종가 × 거래량)을 원화로 환산해 합산합니다. "

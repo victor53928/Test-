@@ -19,6 +19,7 @@ from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, format_money, format_
 from app.fundamentals import get_valuation
 from app.live_price import get_price_data
 from app.sectors import DIVIDEND_STOCKS
+from app.theme import inject_theme
 
 MARKET_LABELS = {"KR": "🇰🇷 한국 배당주", "US": "🇺🇸 미국 배당주"}
 CURRENCY_BY_MARKET = {"KR": "KRW", "US": "USD"}
@@ -26,6 +27,7 @@ LIVE_MARKET_BY_MARKET = {"KR": "KOSPI", "US": "US"}
 BLOCKS_PER_ROW = 4
 
 st.set_page_config(page_title="배당금", layout="wide")
+inject_theme()
 st.title("배당금")
 st.caption("한국/미국 주요 배당주의 배당수익률·주당배당금을 비교하고, 가격 추이를 겹쳐서 볼 수 있습니다.")
 

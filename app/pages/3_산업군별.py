@@ -42,6 +42,7 @@ from app.formatting import (
 )
 from app.live_price import get_price_data
 from app.sectors import SECTORS
+from app.theme import inject_theme
 from app.ticker_lookup import DartApiKeyMissing, resolve_kr_ticker, resolve_yf_ticker
 
 LOOKBACK_DAYS = PERIOD_OPTIONS["10년"]
@@ -89,6 +90,7 @@ def _live_kr_fallback(ticker: str):
 
 
 st.set_page_config(page_title="산업군별 주식", layout="wide")
+inject_theme()
 st.title("산업군별 주식")
 
 with get_conn() as conn:

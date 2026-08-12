@@ -20,8 +20,10 @@ import streamlit as st
 from app.db import get_conn
 from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, format_money, right_aligned_table_html
 from app.sectors import COMMODITIES, COMMODITY_ETFS
+from app.theme import inject_theme
 
 st.set_page_config(page_title="원자재", layout="wide")
+inject_theme()
 st.title("원자재 가격")
 
 ALL_SYMBOLS = COMMODITIES + COMMODITY_ETFS

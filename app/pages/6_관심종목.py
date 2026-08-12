@@ -22,6 +22,7 @@ from app.formatting import DEFAULT_PERIOD, PERIOD_OPTIONS, filter_by_period, for
 from app.fundamentals import get_financial_trend, get_valuation
 from app.live_price import get_price_data
 from app.news import SOURCE_DOMAINS, fetch_news
+from app.theme import colored_metric, inject_theme
 from app.ticker_lookup import DartApiKeyMissing, resolve_kr_ticker, resolve_yf_ticker
 
 MARKET_LABELS = {"KOSPI": "코스피", "KOSDAQ": "코스닥", "US": "미국", "JP": "일본"}
@@ -78,6 +79,7 @@ def _cached_kospi_history(days: int) -> pd.DataFrame:
 
 
 st.set_page_config(page_title="관심종목", layout="wide")
+inject_theme()
 st.title("관심종목 뉴스 & 시세")
 
 with get_conn() as conn:
@@ -155,7 +157,6 @@ else:
             )
 
             data = _cached_price_data(entry["ticker"], entry["market"], PERIOD_OPTIONS[entry_period])
-            delta = f"{data['change_pct']:.2f}%" if data["change_pct"] is not None else None
             history = data["history"]
             latest_volume = history["volume"].iloc[-1] if not history.empty else None
             as_of = history["date"].iloc[-1] if not history.empty else "N/A"
@@ -163,14 +164,21 @@ else:
             with chart_area:
                 if entry["market"] in ("KOSPI", "KOSDAQ"):
                     m1, m2, m3 = st.columns(3)
-                    m1.metric("종가", format_money(data["latest_price"], data["currency"]), delta=delta)
+                    with m1:
+                        colored_metric(
+                            "종가",
+                            format_money(data["latest_price"], data["currency"]),
+                            delta_value=data["change_pct"],
+                            delta_suffix="%",
+                        )
                     m2.metric("시가총액", format_money_korean(data["market_cap"], data["currency"]))
                     m3.metric("거래량", f"{latest_volume:,.0f}" if latest_volume is not None else "N/A")
                 else:
-                    st.metric(
+                    colored_metric(
                         f"현재가 ({data['currency']})",
                         format_money(data["latest_price"], data["currency"], decimals=2),
-                        delta=delta,
+                        delta_value=data["change_pct"],
+                        delta_suffix="%",
                     )
                 st.caption(f"기준일자: {as_of}")
 
