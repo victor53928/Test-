@@ -225,7 +225,11 @@ COMMODITIES = [
     ("GC=F", "금"),
     ("SI=F", "은"),
     ("HG=F", "구리"),
+    ("PL=F", "백금"),
+    ("PA=F", "팔라듐"),
     ("CL=F", "WTI 원유"),
+    ("BZ=F", "브렌트유"),
+    ("NG=F", "천연가스"),
     ("TIO=F", "철광석"),
 ]
 # 텅스텐(tungsten)은 Yahoo Finance에 추적 가능한 선물/ETF 티커가 없어 제외했습니다
@@ -254,7 +258,14 @@ INDICES = [
     {
         "country": "US",
         "label": "🇺🇸 미국",
-        "symbols": [("^GSPC", "S&P 500"), ("^DJI", "다우존스"), ("^IXIC", "나스닥")],
+        # 한국 금융 매체에서 흔히 "미국 4대 지수"로 함께 묶는 조합 -- 필라델피아
+        # 반도체지수(SOX)는 국내 반도체株 흐름과 상관관계가 높아 특히 많이 참고됩니다.
+        "symbols": [
+            ("^GSPC", "S&P 500"),
+            ("^DJI", "다우존스"),
+            ("^IXIC", "나스닥"),
+            ("^SOX", "필라델피아 반도체지수"),
+        ],
     },
 ]
 
@@ -288,3 +299,28 @@ DIVIDEND_STOCKS = {
         ("O", "Realty Income"),
     ],
 }
+
+# 미국주식 페이지: 시가총액 상위권 대형주 20개 (순위는 매일 바뀌므로 대략적인
+# 대형주 목록으로 참고 -- 페이지에서도 이 점을 안내합니다).
+TOP20_US_STOCKS = [
+    ("AAPL", "Apple"),
+    ("MSFT", "Microsoft"),
+    ("NVDA", "NVIDIA"),
+    ("GOOGL", "Alphabet (Google)"),
+    ("AMZN", "Amazon"),
+    ("META", "Meta Platforms"),
+    ("BRK-B", "Berkshire Hathaway"),
+    ("AVGO", "Broadcom"),
+    ("TSLA", "Tesla"),
+    ("LLY", "Eli Lilly"),
+    ("V", "Visa"),
+    ("JPM", "JPMorgan Chase"),
+    ("WMT", "Walmart"),
+    ("MA", "Mastercard"),
+    ("XOM", "ExxonMobil"),
+    ("UNH", "UnitedHealth Group"),
+    ("ORCL", "Oracle"),
+    ("PG", "Procter & Gamble"),
+    ("JNJ", "Johnson & Johnson"),
+    ("COST", "Costco Wholesale"),
+]

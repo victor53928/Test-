@@ -29,4 +29,5 @@ st.page_link("pages/6_관심종목.py", label="관심종목 뉴스 & 시세", ic
 st.page_link("pages/7_종목비교.py", label="종목 비교", icon="⚔️")
 st.page_link("pages/8_산업군비교.py", label="산업군 비교", icon="🏭")
 st.page_link("pages/9_배당금.py", label="배당금", icon="💰")
-st.page_link("pages/10_포트폴리오.py", label="포트폴리오 입력 및 리밸런싱", icon="⚖️")
+st.page_link("pages/10_미국주식.py", label="미국주식", icon="🇺🇸")
+st.page_link("pages/11_포트폴리오.py", label="포트폴리오 입력 및 리밸런싱", icon="⚖️")
