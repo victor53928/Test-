@@ -1,6 +1,8 @@
-pykrx>=1.0.51
 yfinance>=0.2.40
+pykrx>=1.0.45
 requests>=2.31
 python-dotenv>=1.0
 pandas>=2.0
 streamlit>=1.35
+altair>=5.0
+streamlit-extras>=0.4.0

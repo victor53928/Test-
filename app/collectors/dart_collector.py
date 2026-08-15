@@ -16,6 +16,7 @@ CORP_CODE_URL = "https://opendart.fss.or.kr/api/corpCode.xml"
 FINANCIALS_URL = "https://opendart.fss.or.kr/api/fnlttSinglAcnt.json"
 
 CORP_CODE_CACHE = BASE_DIR / "data" / "corp_code_cache.json"
+CORP_NAME_CACHE = BASE_DIR / "data" / "corp_name_cache.json"
 
 REPORT_CODES = {
     1: "11013",  # 1분기보고서
@@ -49,6 +50,35 @@ def get_corp_code_map() -> dict:
     mapping = _download_corp_code_map()
     CORP_CODE_CACHE.parent.mkdir(parents=True, exist_ok=True)
     CORP_CODE_CACHE.write_text(json.dumps(mapping, ensure_ascii=False))
+    return mapping
+
+
+def _download_corp_name_map() -> dict:
+    resp = requests.get(CORP_CODE_URL, params={"crtfc_key": DART_API_KEY}, timeout=30)
+    resp.raise_for_status()
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        xml_bytes = zf.read("CORPCODE.xml")
+
+    root = ET.fromstring(xml_bytes)
+    mapping = {}
+    for item in root.iter("list"):
+        stock_code = item.findtext("stock_code", "").strip()
+        corp_name = item.findtext("corp_name", "").strip()
+        if stock_code and corp_name:
+            mapping[corp_name] = stock_code
+    return mapping
+
+
+def get_corp_name_map() -> dict:
+    """Returns {corp_name: stock_code} for all KRX-listed companies, so the
+    watchlist/sector "add by name" flow can resolve a name without the user
+    knowing the ticker. Uses a local cache to avoid re-downloading."""
+    if CORP_NAME_CACHE.exists():
+        return json.loads(CORP_NAME_CACHE.read_text())
+
+    mapping = _download_corp_name_map()
+    CORP_NAME_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    CORP_NAME_CACHE.write_text(json.dumps(mapping, ensure_ascii=False))
     return mapping
 
 

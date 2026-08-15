@@ -1,29 +1,36 @@
-"""Collects market cap, close price and trading volume for KR-listed stocks via pykrx."""
+"""Collects market cap, close price and trading volume for KR-listed stocks
+via app/kr_data_source.py (pykrx first, Naver Finance fallback)."""
 
-from pykrx import stock
+import datetime
+
+from app import kr_data_source
 
 
 def fetch_market_data(ticker: str, fromdate: str, todate: str):
     """Returns a list of (date, close, market_cap, volume) tuples for one ticker.
 
-    fromdate/todate must be 'YYYYMMDD' strings.
+    fromdate/todate are 'YYYYMMDD' strings; only their span (todate - fromdate)
+    is used, since the underlying daily-price fetches are queried by day count.
+    Close/volume and market cap are fetched independently: if the market-cap
+    lookup fails, that day's close/volume is still kept (with market_cap
+    approximated from shares outstanding, or None) instead of the whole
+    ticker being dropped.
     """
-    cap_df = stock.get_market_cap_by_date(fromdate, todate, ticker)
-    ohlcv_df = stock.get_market_ohlcv_by_date(fromdate, todate, ticker)
-
-    if cap_df.empty:
+    days = (
+        datetime.datetime.strptime(todate, "%Y%m%d") - datetime.datetime.strptime(fromdate, "%Y%m%d")
+    ).days + 1
+    rows = kr_data_source.fetch_daily_ohlcv(ticker, days)
+    if not rows:
         return []
 
-    rows = []
-    for date, cap_row in cap_df.iterrows():
-        date_str = date.strftime("%Y-%m-%d")
-        close = float(ohlcv_df.loc[date, "종가"]) if date in ohlcv_df.index else None
-        rows.append(
-            (
-                date_str,
-                close,
-                float(cap_row["시가총액"]),
-                int(cap_row["거래량"]),
-            )
-        )
-    return rows
+    shares = None
+    try:
+        summary = kr_data_source.fetch_market_summary(ticker)
+        shares = summary.get("shares_outstanding")
+    except Exception:
+        pass  # market cap is a nice-to-have; close/volume below still work without it
+
+    return [
+        (date_str, close, (close * shares) if shares else None, volume)
+        for date_str, close, volume in rows
+    ]
